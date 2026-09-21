@@ -1,0 +1,10 @@
+// sum 1..N
+DECLARE n : INTEGER
+DECLARE total : INTEGER
+DECLARE i : INTEGER
+INPUT n
+total <- 0
+FOR i <- 1 TO n
+    total <- total + i
+NEXT i
+OUTPUT "Sum is ", total

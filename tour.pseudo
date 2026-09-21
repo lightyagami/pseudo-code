@@ -1,0 +1,39 @@
+// A tour of the v1 language features
+DECLARE i : INTEGER
+DECLARE n : INTEGER
+DECLARE avg : REAL
+DECLARE big : BOOLEAN
+DECLARE name : STRING
+DECLARE int : INTEGER      // 'int' is a C keyword; the compiler renames it safely
+
+name <- "World"
+OUTPUT "Hello, ", name, "! (100% working)"
+
+// Real division vs integer DIV / MOD
+OUTPUT "7 / 2   = ", 7 / 2
+OUTPUT "7 DIV 2 = ", 7 DIV 2
+OUTPUT "7 MOD 2 = ", 7 MOD 2
+
+// Counting down with STEP
+FOR i <- 10 TO 1 STEP -3
+    OUTPUT "countdown: ", i
+NEXT i
+
+// WHILE, booleans, comparisons
+n <- 1
+WHILE n < 100 DO
+    n <- n * 3
+ENDWHILE
+big <- n >= 100 AND NOT (n = 1000)
+OUTPUT "n = ", n, ", big = ", big
+
+// INTEGER widens to REAL
+avg <- n / 4
+OUTPUT "avg = ", avg
+
+// String comparison
+IF name = "World" THEN
+    OUTPUT "name matches"
+ENDIF
+int <- -(-5)
+OUTPUT int

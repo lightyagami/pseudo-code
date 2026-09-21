@@ -1,0 +1,17 @@
+// FizzBuzz for 1..15
+DECLARE i : INTEGER
+FOR i <- 1 TO 15
+    IF i MOD 15 = 0 THEN
+        OUTPUT "FizzBuzz"
+    ELSE
+        IF i MOD 5 = 0 THEN
+            OUTPUT "Buzz"
+        ELSE
+            IF i MOD 3 = 0 THEN
+                OUTPUT "Fizz"
+            ELSE
+                OUTPUT i
+            ENDIF
+        ENDIF
+    ENDIF
+NEXT i
