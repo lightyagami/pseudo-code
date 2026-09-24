@@ -1,4 +1,5 @@
 #include "bytecode.h"
+#include "c_to_pseudo.h"
 #include "codegen.h"
 #include "diagnostics.h"
 #include "lexer.h"
@@ -14,10 +15,11 @@
 #include <vector>
 
 static void usage() {
-    std::cerr << "usage: pseudoc [<input.pseudo>] [options]\n\n"
+    std::cerr << "usage: pseudoc [<input>] [options]\n\n"
               << "Options:\n"
-              << "  -o <output.c>         Compile pseudocode to C and write to <output.c>\n"
+              << "  -o <output>           Output file (C source or Pseudocode depending on mode)\n"
               << "  -c, --emit-c          Compile pseudocode and emit C source code to stdout\n"
+              << "  -r, --c-to-pseudo     Decompile/transpile C source code to Cambridge pseudocode\n"
               << "  -d, --dump-bc         Disassemble and print bytecode without executing\n"
               << "  -i, --repl            Run interactive REPL (powered by VM)\n"
               << "  -h, --help            Show this help message\n\n"
@@ -40,19 +42,21 @@ int main(int argc, char** argv) {
     bool interactive = false;
     bool emitC = false;
     bool dumpBc = false;
+    bool cToPseudo = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-h" || arg == "--help") { usage(); return 0; }
         if (arg == "-i" || arg == "--repl") { interactive = true; }
         else if (arg == "-c" || arg == "--emit-c") { emitC = true; }
+        else if (arg == "-r" || arg == "--reverse" || arg == "--c-to-pseudo") { cToPseudo = true; }
         else if (arg == "-d" || arg == "--dump-bc" || arg == "--dump-bytecode") { dumpBc = true; }
         else if (arg == "-o" && i + 1 < argc) { outPath = argv[++i]; }
         else if (inPath.empty()) { inPath = arg; }
         else { usage(); return 2; }
     }
 
-    if (interactive || (inPath.empty() && outPath.empty() && !emitC && !dumpBc)) {
+    if (interactive || (inPath.empty() && outPath.empty() && !emitC && !dumpBc && !cToPseudo)) {
         runRepl();
         return 0;
     }
@@ -66,6 +70,26 @@ int main(int argc, char** argv) {
     if (!readFile(inPath, source)) {
         std::cerr << "pseudoc: cannot open '" << inPath << "'\n";
         return 2;
+    }
+
+    // Auto-detect C file if extension is .c and neither emitC nor dumpBc is set
+    if (!cToPseudo && inPath.size() >= 2 && inPath.substr(inPath.size() - 2) == ".c" && !emitC && !dumpBc) {
+        cToPseudo = true;
+    }
+
+    if (cToPseudo) {
+        std::string pseudo = translateCToPseudocode(source);
+        if (outPath.empty()) {
+            std::cout << pseudo;
+        } else {
+            std::ofstream out(outPath);
+            if (!out) {
+                std::cerr << "pseudoc: cannot write '" << outPath << "'\n";
+                return 2;
+            }
+            out << pseudo;
+        }
+        return 0;
     }
 
     Diagnostics diag(inPath, source);

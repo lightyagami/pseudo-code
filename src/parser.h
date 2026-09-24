@@ -21,6 +21,7 @@ private:
     size_t cur_ = 0;
 
     const Token& peek() const;
+    const Token& peekNext() const;
     const Token& previous() const;
     bool atEnd() const;
     bool check(Tok type) const;

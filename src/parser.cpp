@@ -20,6 +20,11 @@ const Token& Parser::peek() const {
     return toks_[cur_];
 }
 
+const Token& Parser::peekNext() const {
+    if (cur_ + 1 < toks_.size()) return toks_[cur_ + 1];
+    return toks_.back();
+}
+
 const Token& Parser::previous() const {
     return toks_[cur_ - 1];
 }
@@ -754,8 +759,17 @@ ExprPtr Parser::parsePrimary() {
         case Tok::Asc:
         case Tok::IntFunc:
         case Tok::Round:
+        case Tok::Rnd:
         case Tok::EofFunc:
             return parseBuiltInCall(t.type);
+
+        case Tok::Div:
+        case Tok::Mod:
+            if (peekNext().type == Tok::LParen) {
+                return parseBuiltInCall(t.type);
+            }
+            fail(t, "expected an expression, found " + describe(t));
+            return nullptr;
 
         case Tok::Ident: {
             Token id = advance();

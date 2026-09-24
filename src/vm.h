@@ -31,6 +31,7 @@ public:
     }
 
     int run(const Chunk& chunk, bool isRepl = false);
+    const std::vector<Value>& globals() const { return globals_; }
 
 private:
     std::vector<Value> globals_;

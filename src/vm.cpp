@@ -795,6 +795,12 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                 break;
             }
 
+            case OpCode::OpRnd: {
+                double r = static_cast<double>(std::rand()) / (static_cast<double>(RAND_MAX) + 1.0);
+                push(Value::makeReal(r));
+                break;
+            }
+
             case OpCode::OpEqual: {
                 Value b = pop();
                 Value a = pop();

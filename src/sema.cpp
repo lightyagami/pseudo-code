@@ -709,6 +709,21 @@ TypeInfo Sema::computeCall(CallExpr& c) {
                 requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "ROUND argument 2 (places)");
             }
             return {BaseType::Real, "", false, 0, 0, 0, 0, 0};
+        case Tok::Rnd:
+            if (checkArgCount(0)) {}
+            return {BaseType::Real, "", false, 0, 0, 0, 0, 0};
+        case Tok::Mod:
+            if (checkArgCount(2)) {
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::Integer, "MOD argument 1");
+                requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "MOD argument 2");
+            }
+            return {BaseType::Integer, "", false, 0, 0, 0, 0, 0};
+        case Tok::Div:
+            if (checkArgCount(2)) {
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::Integer, "DIV argument 1");
+                requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "DIV argument 2");
+            }
+            return {BaseType::Integer, "", false, 0, 0, 0, 0, 0};
         case Tok::EofFunc:
             if (checkArgCount(1)) {
                 requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "EOF argument (filename)");

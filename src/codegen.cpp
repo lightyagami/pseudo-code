@@ -290,6 +290,9 @@ void CodeGen::emitRuntimeHeaders() {
          << "static double pc_round(double v, long long places) {\n"
          << "    double factor = pow(10.0, (double)places);\n"
          << "    return round(v * factor) / factor;\n"
+         << "}\n"
+         << "static inline double pc_rnd(void) {\n"
+         << "    return (double)rand() / ((double)RAND_MAX + 1.0);\n"
          << "}\n\n";
 }
 
@@ -463,14 +466,18 @@ std::string CodeGen::lvalueExpr(const Expr& e) {
     }
     if (e.kind == Expr::Kind::ArrayAccess) {
         auto& a = static_cast<const ArrayAccessExpr&>(e);
-        if (a.target) {
-            std::string s = lvalueExpr(*a.target);
-            for (auto& idx : a.indices) {
-                s += "[" + expr(*idx) + "]";
-            }
-            return s;
+        std::string arrName = a.name;
+        if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+            arrName = static_cast<const VarExpr&>(*a.target).name;
         }
-        return cName(a.name) + arrayOffset(a.name, a.indices);
+        if (!arrName.empty() && varMap_.find(arrName) != varMap_.end()) {
+            return cName(arrName) + arrayOffset(arrName, a.indices);
+        }
+        std::string s = a.target ? lvalueExpr(*a.target) : cName(a.name);
+        for (auto& idx : a.indices) {
+            s += "[" + expr(*idx) + "]";
+        }
+        return s;
     }
     return expr(e);
 }
@@ -789,12 +796,16 @@ std::string CodeGen::expr(const Expr& e) {
         }
         case Expr::Kind::ArrayAccess: {
             auto& a = static_cast<const ArrayAccessExpr&>(e);
-            if (a.target) {
-                std::string s = lvalueExpr(*a.target);
-                for (auto& idx : a.indices) s += "[" + expr(*idx) + "]";
-                return s;
+            std::string arrName = a.name;
+            if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+                arrName = static_cast<const VarExpr&>(*a.target).name;
             }
-            return cName(a.name) + arrayOffset(a.name, a.indices);
+            if (!arrName.empty() && varMap_.find(arrName) != varMap_.end()) {
+                return cName(arrName) + arrayOffset(arrName, a.indices);
+            }
+            std::string s = a.target ? lvalueExpr(*a.target) : cName(a.name);
+            for (auto& idx : a.indices) s += "[" + expr(*idx) + "]";
+            return s;
         }
         case Expr::Kind::MemberAccess: {
             auto& m = static_cast<const MemberAccessExpr&>(e);
@@ -858,6 +869,12 @@ std::string CodeGen::call(const CallExpr& c) {
             return "pc_int(" + expr(*c.args[0]) + ")";
         case Tok::Round:
             return "pc_round(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+        case Tok::Rnd:
+            return "pc_rnd()";
+        case Tok::Mod:
+            return "pc_mod(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+        case Tok::Div:
+            return "pc_div(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::EofFunc:
             return "pc_eof(" + expr(*c.args[0]) + ")";
         default:

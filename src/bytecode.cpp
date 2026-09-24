@@ -81,6 +81,7 @@ const char* opCodeName(OpCode op) {
         case OpCode::OpAsc:                return "OP_ASC";
         case OpCode::OpInt:                return "OP_INT";
         case OpCode::OpRound:              return "OP_ROUND";
+        case OpCode::OpRnd:                return "OP_RND";
         case OpCode::OpEqual:              return "OP_EQUAL";
         case OpCode::OpNotEqual:           return "OP_NOT_EQUAL";
         case OpCode::OpLess:               return "OP_LESS";
@@ -850,6 +851,9 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
                 case Tok::Asc:       emit(OpCode::OpAsc, 0, 0, 0, 0, c.line); break;
                 case Tok::IntFunc:   emit(OpCode::OpInt, 0, 0, 0, 0, c.line); break;
                 case Tok::Round:     emit(OpCode::OpRound, 0, 0, 0, 0, c.line); break;
+                case Tok::Rnd:       emit(OpCode::OpRnd, 0, 0, 0, 0, c.line); break;
+                case Tok::Mod:       emit(OpCode::OpMod, 0, 0, 0, 0, c.line); break;
+                case Tok::Div:       emit(OpCode::OpDivInt, 0, 0, 0, 0, c.line); break;
                 case Tok::EofFunc:   emit(OpCode::OpEof, 0, 0, 0, 0, c.line); break;
                 default: break;
             }

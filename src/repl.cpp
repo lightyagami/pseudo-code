@@ -43,6 +43,45 @@ void runRepl() {
         std::string line;
         if (!std::getline(std::cin, line)) break;
         if (blockDepth == 0 && (line == ":q" || line == "EXIT" || line == "exit")) break;
+        if (blockDepth == 0 && (line == ":help" || line == "help")) {
+            std::cout << "Pseudoc REPL Commands:\n"
+                      << "  :help           Show this help message\n"
+                      << "  :vars / :env    Display all active variables and values\n"
+                      << "  :reset          Reset all variables and REPL state\n"
+                      << "  :q / EXIT       Exit the REPL\n\n"
+                      << "Cambridge Pseudocode Quick Reference:\n"
+                      << "  DECLARE <id> : <type>             (INTEGER, REAL, BOOLEAN, STRING, CHAR)\n"
+                      << "  CONSTANT <id> = <value>\n"
+                      << "  <var> <- <expr>\n"
+                      << "  OUTPUT <expr>, ...\n"
+                      << "  INPUT <var>\n"
+                      << "  IF ... THEN ... ELSE ... ENDIF\n"
+                      << "  WHILE ... DO ... ENDWHILE\n"
+                      << "  REPEAT ... UNTIL <cond>\n"
+                      << "  FOR <var> <- <start> TO <end> [STEP <s>] ... NEXT <var>\n";
+            continue;
+        }
+        if (blockDepth == 0 && (line == ":vars" || line == ":env")) {
+            if (replVars.empty()) {
+                std::cout << "(no variables declared)\n";
+            } else {
+                const auto& vals = vm.globals();
+                for (size_t i = 0; i < replVars.size(); ++i) {
+                    std::cout << "  " << replVars[i].first << " : "
+                              << typeString(replVars[i].second) << " = ";
+                    if (i < vals.size()) vals[i].print(std::cout);
+                    std::cout << "\n";
+                }
+            }
+            continue;
+        }
+        if (blockDepth == 0 && line == ":reset") {
+            replSymbols.clear();
+            replVars.clear();
+            vm.initGlobals({});
+            std::cout << "REPL state reset.\n";
+            continue;
+        }
         if (line.empty() && blockDepth == 0) continue;
 
         if (!accumulated.empty()) accumulated += "\n";

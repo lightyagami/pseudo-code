@@ -25,3 +25,12 @@ OUTPUT "INT(-3.2) = ", INT(-3.2)
 OUTPUT "ROUND(14.857, 2) = ", ROUND(val, 2)
 OUTPUT "ROUND(14.857, 0) = ", ROUND(val, 0)
 OUTPUT "ROUND(2.675, 1) = ", ROUND(2.675, 1)
+
+// Functional DIV and MOD
+OUTPUT "MOD(25, 7) = ", MOD(25, 7)
+OUTPUT "DIV(25, 7) = ", DIV(25, 7)
+
+// RND / RANDOM built-in test
+DECLARE r : REAL
+r <- RND()
+OUTPUT "RND in [0, 1) = ", r >= 0.0 AND r < 1.0

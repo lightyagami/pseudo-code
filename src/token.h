@@ -24,7 +24,7 @@ enum class Tok {
     And, Or, Not, Div, Mod, True, False,
     // Built-in functions
     Length, Substring, Mid, Left, Right, UCase, LCase, NumToStr, StrToNum,
-    Chr, Asc, IntFunc, Round, EofFunc,
+    Chr, Asc, IntFunc, Round, Rnd, EofFunc,
     // Symbols
     Arrow, Colon, Comma, Dot, LParen, RParen, LBracket, RBracket,
     Plus, Minus, Star, Slash, Ampersand,
@@ -70,6 +70,7 @@ static const std::unordered_map<std::string, Tok> kBuiltinFunctions = {
     {"NUM_TO_STR", Tok::NumToStr}, {"STR_TO_NUM", Tok::StrToNum},
     {"CHR", Tok::Chr}, {"ASC", Tok::Asc},
     {"INT", Tok::IntFunc}, {"ROUND", Tok::Round},
+    {"RND", Tok::Rnd}, {"RANDOM", Tok::Rnd},
     {"EOF", Tok::EofFunc}
 };
 

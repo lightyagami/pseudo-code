@@ -186,6 +186,7 @@ enum class OpCode : uint8_t {
     OpAsc,
     OpInt,
     OpRound,
+    OpRnd,
 
     // Comparisons
     OpEqual,
