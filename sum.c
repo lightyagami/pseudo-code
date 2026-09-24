@@ -5,7 +5,7 @@
 #include <ctype.h>
 #include <strings.h>
 
-// --- Pseudoc Runtime Core & GC ---
+// --- Pseudoc Runtime Core & Dynamic Memory Tracker ---
 typedef struct PC_Node { void* ptr; struct PC_Node* next; } PC_Node;
 static PC_Node* pc_gc_head = NULL;
 static void* pc_track(void* p) {
@@ -22,7 +22,7 @@ static void pc_cleanup(void) {
         pc_gc_head = next;
     }
 }
-// --- Line-based unified Input Runtime (Fix #1 & #2) ---
+// --- Line-based Unified Input Runtime ---
 static char pc_input_buf[4096];
 static char* pc_read_line(void) {
     if (!fgets(pc_input_buf, sizeof(pc_input_buf), stdin)) {
@@ -53,7 +53,7 @@ static bool pc_read_bool(void) {
     if (strcasecmp(line, "TRUE") == 0 || strcmp(line, "1") == 0) return true;
     return false;
 }
-// --- Overflow-checked integer arithmetic (Fix #8) ---
+// --- Overflow-checked Integer Arithmetic ---
 static inline long long pc_add(long long a, long long b) {
     long long res;
     if (__builtin_add_overflow(a, b, &res)) {
@@ -78,7 +78,7 @@ static inline long long pc_mul(long long a, long long b) {
     }
     return res;
 }
-// --- Helpers for array indexing, strings, and division ---
+// --- Array Indexing, Bounds Checking & Mathematical Helpers ---
 static inline void pc_bounds_check(long long val, long long low, long long high, const char* name) {
     if (val < low || val > high) {
         fprintf(stderr, "Runtime Error: Array index out of bounds on '%s': index %lld not in [%lld:%lld]\n", name, val, low, high);
