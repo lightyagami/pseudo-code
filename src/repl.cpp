@@ -27,11 +27,11 @@ void runRepl() {
         for (const auto& t : toks) {
             if (t.type == Tok::If || t.type == Tok::While || t.type == Tok::For ||
                 t.type == Tok::Case || t.type == Tok::Function || t.type == Tok::Procedure ||
-                t.type == Tok::Type || t.type == Tok::Repeat) {
+                t.type == Tok::Type || t.type == Tok::Repeat || t.type == Tok::Class) {
                 depth++;
             } else if (t.type == Tok::EndIf || t.type == Tok::EndWhile || t.type == Tok::Next ||
                        t.type == Tok::EndCase || t.type == Tok::EndFunction || t.type == Tok::EndProcedure ||
-                       t.type == Tok::EndType || t.type == Tok::Until) {
+                       t.type == Tok::EndType || t.type == Tok::Until || t.type == Tok::EndClass) {
                 depth = std::max(0, depth - 1);
             }
         }
@@ -126,7 +126,7 @@ void runRepl() {
         vm.setRecordTypes(trialSema.recordTypes());
 
         // Compile statement(s) to bytecode and run on VM
-        Chunk chunk = BytecodeCompiler(replVars, trialSema.recordTypes(), trialSema.functions()).compile(trialProg);
+        Chunk chunk = BytecodeCompiler(replVars, trialSema.recordTypes(), trialSema.functions(), trialSema.classTypes()).compile(trialProg);
         vm.run(chunk, true);
     }
 }

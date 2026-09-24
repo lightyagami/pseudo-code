@@ -16,6 +16,7 @@ struct CallFrame {
     size_t stackBase = 0;
     int numLocals = 0;
     bool isFunction = false;
+    Value returnObject; // If set (isObject()), push after procedure returns (used by constructors)
 };
 
 class VM {

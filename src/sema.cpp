@@ -1,8 +1,109 @@
 #include "sema.h"
+#include <unordered_set>
 
 Sema::Sema(Diagnostics& diag) : diag_(diag) {}
 
+void Sema::resolveType(TypeInfo& t) {
+    if (t.base == BaseType::Record) {
+        if (classTypes_.find(t.recordName) != classTypes_.end()) {
+            t.base = BaseType::Object;
+        }
+    }
+}
+
+bool Sema::isSubclass(const std::string& sub, const std::string& super) const {
+    std::string cur = sub;
+    std::unordered_set<std::string> visited;
+    while (!cur.empty() && visited.insert(cur).second) {
+        auto it = classTypes_.find(cur);
+        if (it == classTypes_.end()) break;
+        if (it->second.superClass == super) return true;
+        cur = it->second.superClass;
+    }
+    return false;
+}
+
+const ClassProperty* Sema::lookupClassProperty(const std::string& className, const std::string& fieldName, std::string* outDeclaringClass) const {
+    std::string cur = className;
+    std::unordered_set<std::string> visited;
+    while (!cur.empty() && visited.insert(cur).second) {
+        auto it = classTypes_.find(cur);
+        if (it == classTypes_.end()) break;
+        for (const auto& p : it->second.properties) {
+            if (p.name == fieldName) {
+                if (outDeclaringClass) *outDeclaringClass = cur;
+                return &p;
+            }
+        }
+        cur = it->second.superClass;
+    }
+    return nullptr;
+}
+
+const Sema::FunctionSig* Sema::lookupClassMethod(const std::string& className, const std::string& methodName, bool* outIsPrivate, std::string* outDeclaringClass) const {
+    std::string cur = className;
+    std::unordered_set<std::string> visited;
+    while (!cur.empty() && visited.insert(cur).second) {
+        auto it = classTypes_.find(cur);
+        if (it == classTypes_.end()) break;
+        auto mit = it->second.methods.find(methodName);
+        if (mit != it->second.methods.end()) {
+            if (outIsPrivate) {
+                auto vit = it->second.methodVisibility.find(methodName);
+                *outIsPrivate = (vit != it->second.methodVisibility.end()) ? vit->second : false;
+            }
+            if (outDeclaringClass) *outDeclaringClass = cur;
+            return &mit->second;
+        }
+        cur = it->second.superClass;
+    }
+    return nullptr;
+}
+
 void Sema::run(Block& program) {
+    // Pass 1: Collect class declarations
+    for (auto& s : program) {
+        if (s->kind == Stmt::Kind::ClassDecl) {
+            auto& cd = static_cast<ClassDeclStmt&>(*s);
+            if (classTypes_.find(cd.name) != classTypes_.end()) {
+                err(cd.line, cd.col, "class '" + cd.name + "' is already defined");
+                continue;
+            }
+            ClassInfo cinfo;
+            cinfo.name = cd.name;
+            cinfo.superClass = cd.superClass;
+            cinfo.line = cd.line;
+            cinfo.col = cd.col;
+            for (auto& p : cd.properties) {
+                resolveType(p.type);
+                cinfo.properties.push_back(p);
+            }
+            for (auto& m : cd.methods) {
+                resolveType(m->returnType);
+                for (auto& param : m->params) {
+                    resolveType(param.type);
+                }
+                FunctionSig sig{m->name, m->isFunction, m->returnType, m->params, m->line};
+                cinfo.methods[m->name] = sig;
+                cinfo.methodVisibility[m->name] = m->isPrivate;
+            }
+            classTypes_[cd.name] = std::move(cinfo);
+        }
+    }
+
+    // Pass 2: Verify superclasses and inheritance cycles
+    for (const auto& kv : classTypes_) {
+        const auto& c = kv.second;
+        if (!c.superClass.empty()) {
+            if (classTypes_.find(c.superClass) == classTypes_.end()) {
+                err(c.line, c.col, "class '" + c.name + "' inherits from unknown class '" + c.superClass + "'");
+            } else if (isSubclass(c.superClass, c.name)) {
+                err(c.line, c.col, "cyclical inheritance detected between '" + c.name + "' and '" + c.superClass + "'");
+            }
+        }
+    }
+
+    // Pass 3: Check statements and method bodies
     checkBlock(program);
 }
 
@@ -25,10 +126,14 @@ Sema::Symbol* Sema::lookup(const std::string& name) {
     return it == symbols_.end() ? nullptr : &it->second;
 }
 
-bool Sema::assignable(const TypeInfo& to, const TypeInfo& from) {
+bool Sema::assignable(const TypeInfo& to, const TypeInfo& from) const {
     if (to.isArray || from.isArray) return to == from;
     if (to.base == from.base) {
         if (to.base == BaseType::Record) return to.recordName == from.recordName;
+        if (to.base == BaseType::Object) {
+            if (to.recordName == from.recordName) return true;
+            return isSubclass(from.recordName, to.recordName);
+        }
         return true;
     }
     if (to.base == BaseType::Real && from.base == BaseType::Integer) return true;
@@ -150,8 +255,111 @@ void Sema::checkStmt(Stmt& s) {
             break;
         }
 
+        case Stmt::Kind::ClassDecl: {
+            auto& cd = static_cast<ClassDeclStmt&>(s);
+            for (auto& m : cd.methods) {
+                bool prevInProc = insideProcedure_;
+                bool prevInFunc = insideFunction_;
+                TypeInfo prevRetType = currentReturnType_;
+                std::string prevClass = currentClassName_;
+                auto prevLocalSyms = std::move(localSymbols_);
+                auto prevLocalOrder = std::move(localOrder_);
+
+                currentClassName_ = cd.name;
+                insideProcedure_ = !m->isFunction;
+                insideFunction_ = m->isFunction;
+                currentReturnType_ = m->returnType;
+                localSymbols_.clear();
+                localOrder_.clear();
+
+                // Slot 0: THIS / this
+                TypeInfo thisType{BaseType::Object, cd.name, false, 0, 0, 0, 0, 0};
+                localSymbols_["THIS"] = Symbol{thisType, m->line, false, false, 0};
+                localSymbols_["this"] = Symbol{thisType, m->line, false, false, 0};
+                localOrder_.emplace_back("THIS", thisType);
+
+                for (size_t i = 0; i < m->params.size(); ++i) {
+                    const auto& param = m->params[i];
+                    localSymbols_[param.name] = Symbol{param.type, param.line, param.isByRef, false, static_cast<int>(i + 1)};
+                    localOrder_.emplace_back(param.name, param.type);
+                }
+
+                checkBlock(m->body);
+
+                insideProcedure_ = prevInProc;
+                insideFunction_ = prevInFunc;
+                currentReturnType_ = prevRetType;
+                currentClassName_ = prevClass;
+                localSymbols_ = std::move(prevLocalSyms);
+                localOrder_ = std::move(prevLocalOrder);
+            }
+            break;
+        }
+
         case Stmt::Kind::Call: {
             auto& c = static_cast<CallStmt&>(s);
+            if (c.target || c.isSuper) {
+                std::string className;
+                if (c.isSuper) {
+                    if (currentClassName_.empty()) {
+                        err(c.line, c.col, "SUPER call used outside of a class method");
+                        break;
+                    }
+                    auto cit = classTypes_.find(currentClassName_);
+                    if (cit == classTypes_.end() || cit->second.superClass.empty()) {
+                        err(c.line, c.col, "class '" + currentClassName_ + "' does not inherit from any superclass");
+                        break;
+                    }
+                    className = cit->second.superClass;
+                } else {
+                    TypeInfo tgt = typeOf(*c.target);
+                    if (tgt.base != BaseType::Object || tgt.isArray) {
+                        err(c.line, c.col, "method call requires an object instance, found " + typeString(tgt));
+                        break;
+                    }
+                    className = tgt.recordName;
+                }
+
+                bool isPrivate = false;
+                std::string decClass;
+                const FunctionSig* sig = lookupClassMethod(className, c.name, &isPrivate, &decClass);
+                if (!sig) {
+                    err(c.line, c.col, "class '" + className + "' has no method named '" + c.name + "'");
+                    break;
+                }
+                if (isPrivate && currentClassName_ != decClass) {
+                    err(c.line, c.col, "cannot call private method '" + c.name + "' of class '" + decClass + "'");
+                }
+                if (c.args.size() != sig->params.size()) {
+                    err(c.line, c.col, "method '" + c.name + "' expects " +
+                        std::to_string(sig->params.size()) + " arguments, found " +
+                        std::to_string(c.args.size()));
+                    break;
+                }
+                for (size_t i = 0; i < c.args.size(); ++i) {
+                    TypeInfo argType = typeOf(*c.args[i]);
+                    const auto& param = sig->params[i];
+                    if (param.isByRef) {
+                        if (c.args[i]->kind != Expr::Kind::Var &&
+                            c.args[i]->kind != Expr::Kind::ArrayAccess &&
+                            c.args[i]->kind != Expr::Kind::MemberAccess) {
+                            err(c.args[i]->line, c.args[i]->col, "BYREF parameter '" + param.name +
+                                "' requires an lvalue");
+                        }
+                        if (argType != param.type) {
+                            err(c.args[i]->line, c.args[i]->col, "BYREF argument type mismatch: expected " +
+                                typeString(param.type) + ", found " + typeString(argType));
+                        }
+                    } else {
+                        if (!assignable(param.type, argType)) {
+                            err(c.args[i]->line, c.args[i]->col, "argument " + std::to_string(i + 1) +
+                                " cannot pass " + typeString(argType) + " to " + typeString(param.type));
+                        }
+                    }
+                }
+                break;
+            }
+
             auto it = functions_.find(c.name);
             if (it == functions_.end()) {
                 err(c.line, c.col, "procedure '" + c.name + "' is not declared");
@@ -224,9 +432,14 @@ void Sema::checkStmt(Stmt& s) {
                 err(d.line, d.col, "'" + d.name + "' is already declared (line " +
                     std::to_string(prev->line) + ")");
             } else {
+                resolveType(d.declaredType);
                 if (d.declaredType.base == BaseType::Record) {
                     if (recordTypes_.find(d.declaredType.recordName) == recordTypes_.end()) {
-                        err(d.line, d.col, "unknown record type '" + d.declaredType.recordName + "'");
+                        err(d.line, d.col, "unknown record or class type '" + d.declaredType.recordName + "'");
+                    }
+                } else if (d.declaredType.base == BaseType::Object) {
+                    if (classTypes_.find(d.declaredType.recordName) == classTypes_.end()) {
+                        err(d.line, d.col, "unknown class '" + d.declaredType.recordName + "'");
                     }
                 }
                 if (d.declaredType.isArray) {
@@ -277,7 +490,24 @@ void Sema::checkStmt(Stmt& s) {
         case Stmt::Kind::Assign: {
             auto& a = static_cast<AssignStmt&>(s);
             Symbol* sym = lookup(a.name);
-            if (!sym) err(a.line, a.col, "'" + a.name + "' is not declared");
+            if (!sym) {
+                if (!currentClassName_.empty()) {
+                    std::string decClass;
+                    const ClassProperty* cp = lookupClassProperty(currentClassName_, a.name, &decClass);
+                    if (cp) {
+                        if (cp->isPrivate && currentClassName_ != decClass) {
+                            err(a.line, a.col, "cannot access private property '" + a.name + "' of class '" + decClass + "'");
+                        }
+                        TypeInfo value = typeOf(*a.value);
+                        if (value.base != BaseType::Error && !assignable(cp->type, value)) {
+                            err(a.line, a.col, "cannot assign " + typeString(value) + " to property '" +
+                                a.name + "' of type " + typeString(cp->type));
+                        }
+                        break;
+                    }
+                }
+                err(a.line, a.col, "'" + a.name + "' is not declared");
+            }
             if (sym && sym->isConstant) {
                 err(a.line, a.col, "cannot assign to constant '" + a.name + "'");
             }
@@ -327,9 +557,7 @@ void Sema::checkStmt(Stmt& s) {
         case Stmt::Kind::MemberAssign: {
             auto& m = static_cast<MemberAssignStmt&>(s);
             TypeInfo targetType = typeOf(*m.target);
-            if (targetType.base != BaseType::Record || targetType.isArray) {
-                err(m.line, m.col, "member assignment requires a record object, found " + typeString(targetType));
-            } else {
+            if (targetType.base == BaseType::Record && !targetType.isArray) {
                 const FieldDef* f = lookupField(targetType.recordName, m.field);
                 if (!f) {
                     err(m.line, m.col, "record '" + targetType.recordName + "' has no field named '" + m.field + "'");
@@ -340,6 +568,23 @@ void Sema::checkStmt(Stmt& s) {
                             m.field + "' of type " + typeString(f->type));
                     }
                 }
+            } else if (targetType.base == BaseType::Object && !targetType.isArray) {
+                std::string decClass;
+                const ClassProperty* p = lookupClassProperty(targetType.recordName, m.field, &decClass);
+                if (!p) {
+                    err(m.line, m.col, "class '" + targetType.recordName + "' has no property named '" + m.field + "'");
+                } else {
+                    if (p->isPrivate && currentClassName_ != decClass) {
+                        err(m.line, m.col, "cannot access private property '" + m.field + "' of class '" + decClass + "'");
+                    }
+                    TypeInfo valType = typeOf(*m.value);
+                    if (!assignable(p->type, valType)) {
+                        err(m.line, m.col, "cannot assign " + typeString(valType) + " to property '" +
+                            m.field + "' of type " + typeString(p->type));
+                    }
+                }
+            } else {
+                err(m.line, m.col, "member assignment requires a record or class object, found " + typeString(targetType));
             }
             break;
         }
@@ -349,6 +594,7 @@ void Sema::checkStmt(Stmt& s) {
                 TypeInfo t = typeOf(*arg);
                 if (t.isArray) err(arg->line, arg->col, "cannot output an entire array");
                 if (t.base == BaseType::Record) err(arg->line, arg->col, "cannot output an entire record");
+                if (t.base == BaseType::Object) err(arg->line, arg->col, "cannot output an entire object");
             }
             break;
         }
@@ -511,6 +757,17 @@ TypeInfo Sema::computeType(Expr& e) {
             auto& v = static_cast<VarExpr&>(e);
             Symbol* sym = lookup(v.name);
             if (!sym) {
+                if (!currentClassName_.empty()) {
+                    std::string decClass;
+                    const ClassProperty* cp = lookupClassProperty(currentClassName_, v.name, &decClass);
+                    if (cp) {
+                        if (cp->isPrivate && currentClassName_ != decClass) {
+                            err(v.line, v.col, "cannot access private property '" + v.name + "' of class '" + decClass + "'");
+                            return errType;
+                        }
+                        return cp->type;
+                    }
+                }
                 err(v.line, v.col, "'" + v.name + "' is not declared");
                 return errType;
             }
@@ -546,16 +803,108 @@ TypeInfo Sema::computeType(Expr& e) {
         case Expr::Kind::MemberAccess: {
             auto& m = static_cast<MemberAccessExpr&>(e);
             TypeInfo tgt = typeOf(*m.target);
-            if (tgt.base != BaseType::Record || tgt.isArray) {
-                err(m.line, m.col, "member access '.' requires a record object, found " + typeString(tgt));
+            if (tgt.base == BaseType::Record && !tgt.isArray) {
+                const FieldDef* f = lookupField(tgt.recordName, m.field);
+                if (!f) {
+                    err(m.line, m.col, "record '" + tgt.recordName + "' has no field named '" + m.field + "'");
+                    return errType;
+                }
+                return f->type;
+            } else if (tgt.base == BaseType::Object && !tgt.isArray) {
+                std::string decClass;
+                const ClassProperty* p = lookupClassProperty(tgt.recordName, m.field, &decClass);
+                if (!p) {
+                    err(m.line, m.col, "class '" + tgt.recordName + "' has no property named '" + m.field + "'");
+                    return errType;
+                }
+                if (p->isPrivate && currentClassName_ != decClass) {
+                    err(m.line, m.col, "cannot access private property '" + m.field + "' of class '" + decClass + "'");
+                    return errType;
+                }
+                return p->type;
+            }
+            err(m.line, m.col, "member access '.' requires a record or class object, found " + typeString(tgt));
+            return errType;
+        }
+        case Expr::Kind::New: {
+            auto& n = static_cast<NewExpr&>(e);
+            auto it = classTypes_.find(n.className);
+            if (it == classTypes_.end()) {
+                err(n.line, n.col, "unknown class '" + n.className + "'");
                 return errType;
             }
-            const FieldDef* f = lookupField(tgt.recordName, m.field);
-            if (!f) {
-                err(m.line, m.col, "record '" + tgt.recordName + "' has no field named '" + m.field + "'");
+            const FunctionSig* ctor = lookupClassMethod(n.className, "NEW");
+            if (ctor) {
+                if (n.args.size() != ctor->params.size()) {
+                    err(n.line, n.col, "constructor for class '" + n.className + "' expects " +
+                        std::to_string(ctor->params.size()) + " arguments, found " + std::to_string(n.args.size()));
+                } else {
+                    for (size_t i = 0; i < n.args.size(); ++i) {
+                        TypeInfo argType = typeOf(*n.args[i]);
+                        if (!assignable(ctor->params[i].type, argType)) {
+                            err(n.args[i]->line, n.args[i]->col, "type mismatch in argument " + std::to_string(i + 1) +
+                                ": cannot pass " + typeString(argType) + " to parameter of type " + typeString(ctor->params[i].type));
+                        }
+                    }
+                }
+            } else {
+                if (!n.args.empty()) {
+                    err(n.line, n.col, "class '" + n.className + "' has no constructor taking " +
+                        std::to_string(n.args.size()) + " arguments");
+                }
+            }
+            return TypeInfo{BaseType::Object, n.className, false, 0, 0, 0, 0, 0};
+        }
+        case Expr::Kind::MethodCall: {
+            auto& m = static_cast<MethodCallExpr&>(e);
+            std::string className;
+            if (m.isSuper) {
+                if (currentClassName_.empty()) {
+                    err(m.line, m.col, "SUPER call used outside of a class method");
+                    return errType;
+                }
+                auto cit = classTypes_.find(currentClassName_);
+                if (cit == classTypes_.end() || cit->second.superClass.empty()) {
+                    err(m.line, m.col, "class '" + currentClassName_ + "' does not inherit from any superclass");
+                    return errType;
+                }
+                className = cit->second.superClass;
+            } else {
+                TypeInfo tgt = typeOf(*m.target);
+                if (tgt.base != BaseType::Object || tgt.isArray) {
+                    err(m.line, m.col, "method call requires an object instance, found " + typeString(tgt));
+                    return errType;
+                }
+                className = tgt.recordName;
+            }
+
+            bool isPrivate = false;
+            std::string decClass;
+            const FunctionSig* sig = lookupClassMethod(className, m.method, &isPrivate, &decClass);
+            if (!sig) {
+                err(m.line, m.col, "class '" + className + "' has no method named '" + m.method + "'");
                 return errType;
             }
-            return f->type;
+            if (isPrivate && currentClassName_ != decClass) {
+                err(m.line, m.col, "cannot call private method '" + m.method + "' of class '" + decClass + "'");
+            }
+            if (!sig->isFunction && m.method != "NEW") {
+                err(m.line, m.col, "cannot use procedure method '" + m.method + "' in an expression; use CALL");
+                return errType;
+            }
+            if (m.args.size() != sig->params.size()) {
+                err(m.line, m.col, "method '" + m.method + "' expects " +
+                    std::to_string(sig->params.size()) + " arguments, found " + std::to_string(m.args.size()));
+            } else {
+                for (size_t i = 0; i < m.args.size(); ++i) {
+                    TypeInfo argType = typeOf(*m.args[i]);
+                    if (!assignable(sig->params[i].type, argType)) {
+                        err(m.args[i]->line, m.args[i]->col, "type mismatch in argument " + std::to_string(i + 1) +
+                            ": cannot pass " + typeString(argType) + " to parameter of type " + typeString(sig->params[i].type));
+                    }
+                }
+            }
+            return sig->returnType;
         }
         case Expr::Kind::Unary: {
             auto& u = static_cast<UnaryExpr&>(e);

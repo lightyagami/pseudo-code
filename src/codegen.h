@@ -15,7 +15,8 @@ class CodeGen {
 public:
     CodeGen(const std::vector<std::pair<std::string, TypeInfo>>& vars,
             const std::unordered_map<std::string, RecordDef>& records,
-            const std::unordered_map<std::string, Sema::FunctionSig>& funcs);
+            const std::unordered_map<std::string, Sema::FunctionSig>& funcs,
+            const std::unordered_map<std::string, Sema::ClassInfo>& classes = {});
 
     std::string generate(const Block& program);
 
@@ -24,7 +25,9 @@ private:
     std::unordered_map<std::string, TypeInfo> varMap_;
     const std::unordered_map<std::string, RecordDef>& recordTypes_;
     const std::unordered_map<std::string, Sema::FunctionSig>& functions_;
+    const std::unordered_map<std::string, Sema::ClassInfo>& classTypes_;
     std::unordered_set<std::string> currentByRefParams_;
+    std::string currentClassName_;
     bool insideFunction_ = false;
 
     std::ostringstream out_;
@@ -36,12 +39,15 @@ private:
     std::string zeroValue(const TypeInfo& t);
     static std::string cName(const std::string& name);
     static std::string cTypeName(const std::string& name);
+    static std::string cClassTypeName(const std::string& name);
     static std::string escapeCStr(const std::string& s);
 
     void emitRuntimeHeaders();
     void emitRecordDefinitions();
+    void emitClassDefinitions();
     void emitFunctionPrototypes();
     void emitFunctionDefinitions(const Block& program);
+    void emitClassMethods(const Block& program);
 
     void emitBlock(const Block& block);
     void emitIndented(const Block& block);

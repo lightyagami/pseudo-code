@@ -15,6 +15,7 @@ It can execute pseudocode scripts directly on a stack-based virtual machine, tra
   - **Primitive Types**: `INTEGER`, `REAL`, `BOOLEAN`, `STRING`, `CHAR` (single quotes `'a'`).
   - **Constants**: `CONSTANT <identifier> = <literal>` with compile-time immutability enforcement.
   - **Composite Types**: 1D and 2D `ARRAY` with arbitrary lower/upper bounds, and user-defined `TYPE ... ENDTYPE` records.
+  - **Object-Oriented Programming (Cambridge 9618)**: `CLASS ... ENDCLASS`, `PRIVATE`/`PUBLIC` access modifiers, constructors (`PUBLIC PROCEDURE NEW(...)`), instantiation (`NEW ClassName(...)`), single inheritance (`CLASS Child INHERITS Parent`), and `SUPER` method dispatch.
   - **Subroutines**: `PROCEDURE` and `FUNCTION`, recursion, return values, and explicit parameter passing (`BYVAL` default, `BYREF` mutable references).
   - **Control Flow**: `IF ... THEN ... ELSE ... ENDIF`, `WHILE ... DO ... ENDWHILE`, `REPEAT ... UNTIL <condition>`, `FOR ... TO ... STEP ... NEXT`, and `CASE OF ... OTHERWISE ... ENDCASE`.
   - **File I/O**: `OPENFILE ... FOR READ|WRITE|APPEND`, `READFILE`, `WRITEFILE`, `CLOSEFILE`, and `EOF(...)`.
@@ -126,6 +127,45 @@ s2.score <- 100
 
 OUTPUT s1.name, " scored ", s1.score
 OUTPUT s2.name, " scored ", s2.score
+```
+
+### Classes & Inheritance (OOP)
+```text
+CLASS BankAccount
+    PRIVATE balance : INTEGER
+
+    PUBLIC PROCEDURE NEW(initBal : INTEGER)
+        balance <- initBal
+    ENDPROCEDURE
+
+    PUBLIC PROCEDURE Deposit(amount : INTEGER)
+        balance <- balance + amount
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION GetBalance() RETURNS INTEGER
+        RETURN balance
+    ENDFUNCTION
+ENDCLASS
+
+CLASS SavingsAccount INHERITS BankAccount
+    PRIVATE interestRate : INTEGER
+
+    PUBLIC PROCEDURE NEW(initBal : INTEGER, rate : INTEGER)
+        CALL SUPER.NEW(initBal)
+        interestRate <- rate
+    ENDPROCEDURE
+
+    PUBLIC PROCEDURE AddInterest()
+        DECLARE earned : INTEGER
+        earned <- (THIS.GetBalance() * interestRate) DIV 100
+        CALL THIS.Deposit(earned)
+    ENDPROCEDURE
+ENDCLASS
+
+DECLARE acc : SavingsAccount
+acc <- NEW SavingsAccount(200, 10)
+CALL acc.AddInterest()
+OUTPUT "Balance: ", acc.GetBalance()   // outputs: Balance: 220
 ```
 
 ### Arrays

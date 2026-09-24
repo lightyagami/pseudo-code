@@ -15,8 +15,9 @@
 struct ArrayData;
 struct RecordData;
 struct RefTarget;
+struct ObjectData;
 
-enum class ValueKind { Nil, Int, Real, Bool, String, Array, Record, Ref };
+enum class ValueKind { Nil, Int, Real, Bool, String, Array, Record, Ref, Object };
 
 struct Value {
     ValueKind kind = ValueKind::Nil;
@@ -27,6 +28,7 @@ struct Value {
     std::shared_ptr<ArrayData> arrVal;
     std::shared_ptr<RecordData> recVal;
     std::shared_ptr<RefTarget> refVal;
+    std::shared_ptr<ObjectData> objVal;
 
     static Value makeNil() { return Value(); }
     static Value makeInt(int64_t v) { Value val; val.kind = ValueKind::Int; val.intVal = v; return val; }
@@ -36,6 +38,7 @@ struct Value {
     static Value makeArray(std::shared_ptr<ArrayData> v) { Value val; val.kind = ValueKind::Array; val.arrVal = std::move(v); return val; }
     static Value makeRecord(std::shared_ptr<RecordData> v) { Value val; val.kind = ValueKind::Record; val.recVal = std::move(v); return val; }
     static Value makeRef(std::shared_ptr<RefTarget> v) { Value val; val.kind = ValueKind::Ref; val.refVal = std::move(v); return val; }
+    static Value makeObject(std::shared_ptr<ObjectData> v) { Value val; val.kind = ValueKind::Object; val.objVal = std::move(v); return val; }
 
     bool isNil() const { return kind == ValueKind::Nil; }
     bool isInt() const { return kind == ValueKind::Int; }
@@ -45,6 +48,7 @@ struct Value {
     bool isArray() const { return kind == ValueKind::Array; }
     bool isRecord() const { return kind == ValueKind::Record; }
     bool isRef() const { return kind == ValueKind::Ref; }
+    bool isObject() const { return kind == ValueKind::Object; }
 
     int64_t asInt() const { return intVal; }
     double asReal() const { return isInt() ? static_cast<double>(intVal) : realVal; }
@@ -52,6 +56,11 @@ struct Value {
     const std::string& asString() const { return strVal; }
 
     void print(std::ostream& os) const;
+};
+
+struct ObjectData {
+    std::string className;
+    std::unordered_map<std::string, Value> fields;
 };
 
 struct RecordData {
@@ -88,13 +97,14 @@ struct ArrayData {
 };
 
 struct RefTarget {
-    enum class Kind { Global, StackSlot, Array1D, Array2D, RecordField };
+    enum class Kind { Global, StackSlot, Array1D, Array2D, RecordField, ObjectField };
     Kind kind = Kind::Global;
     int globalSlot = -1;
     size_t stackIndex = 0;
     std::shared_ptr<ArrayData> array;
     size_t arrayOffset = 0;
     std::shared_ptr<RecordData> record;
+    std::shared_ptr<ObjectData> object;
     std::string fieldName;
 
     static std::shared_ptr<RefTarget> makeGlobal(int slot) {
@@ -120,6 +130,13 @@ struct RefTarget {
         auto r = std::make_shared<RefTarget>();
         r->kind = Kind::RecordField;
         r->record = std::move(rec);
+        r->fieldName = std::move(field);
+        return r;
+    }
+    static std::shared_ptr<RefTarget> makeObjectField(std::shared_ptr<ObjectData> obj, std::string field) {
+        auto r = std::make_shared<RefTarget>();
+        r->kind = Kind::ObjectField;
+        r->object = std::move(obj);
         r->fieldName = std::move(field);
         return r;
     }
@@ -155,6 +172,11 @@ enum class OpCode : uint8_t {
     OpCall,
     OpReturn,
     OpReturnVal,
+
+    // OOP operations
+    OpNewObject,
+    OpInvokeMethod,
+    OpSuperCall,
 
     // File I/O
     OpOpenFile,
@@ -246,17 +268,21 @@ struct Chunk {
     std::vector<std::pair<std::string, TypeInfo>> varDescs;
     std::unordered_map<std::string, FunctionInfo> functions;
     std::unordered_map<std::string, RecordDef> recordTypes;
+    std::unordered_map<std::string, Sema::ClassInfo> classTypes;
 };
 
 const char* opCodeName(OpCode op);
 void printInstruction(std::ostream& os, const Chunk& chunk, size_t ip);
 void dumpBytecode(const Chunk& chunk, const std::string& name, std::ostream& os = std::cout);
 
+static const inline std::unordered_map<std::string, Sema::ClassInfo> kEmptyClasses{};
+
 class BytecodeCompiler {
 public:
     BytecodeCompiler(const std::vector<std::pair<std::string, TypeInfo>>& vars,
                      const std::unordered_map<std::string, RecordDef>& records,
-                     const std::unordered_map<std::string, Sema::FunctionSig>& funcs);
+                     const std::unordered_map<std::string, Sema::FunctionSig>& funcs,
+                     const std::unordered_map<std::string, Sema::ClassInfo>& classes = kEmptyClasses);
 
     Chunk compile(const Block& program);
 
@@ -266,6 +292,8 @@ private:
     std::unordered_map<std::string, TypeInfo> typeMap_;
     const std::unordered_map<std::string, RecordDef>& recordTypes_;
     const std::unordered_map<std::string, Sema::FunctionSig>& functions_;
+    const std::unordered_map<std::string, Sema::ClassInfo>& classTypes_;
+    std::string currentClassName_ = "";
     Chunk chunk_;
 
     // Function/Procedure compilation state
@@ -280,6 +308,7 @@ private:
     }
     int getVarSlot(const std::string& name) const;
     TypeInfo getVarType(const std::string& name) const;
+    bool isClassProperty(const std::string& name) const;
 
     int addConstant(Value v);
     int emit(OpCode op, int32_t a = 0, int32_t b = 0, int32_t c = 0, int32_t d = 0, int line = 0);

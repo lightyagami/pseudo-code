@@ -46,6 +46,8 @@ private:
     StmtPtr parseFor();
     StmtPtr parseCase();
     StmtPtr parseTypeDecl();
+    StmtPtr parseClassDecl();
+    StmtPtr parseSuperStmt();
     StmtPtr parseProcedureDecl();
     StmtPtr parseFunctionDecl();
     StmtPtr parseCall();

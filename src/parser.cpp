@@ -97,6 +97,8 @@ StmtPtr Parser::parseStatement() {
         case Tok::For:         advance(); return parseFor();
         case Tok::Case:        advance(); return parseCase();
         case Tok::Type:        advance(); return parseTypeDecl();
+        case Tok::Class:       advance(); return parseClassDecl();
+        case Tok::Super:       advance(); return parseSuperStmt();
         case Tok::Procedure:   advance(); return parseProcedureDecl();
         case Tok::Function:    advance(); return parseFunctionDecl();
         case Tok::Call:        advance(); return parseCall();
@@ -225,6 +227,156 @@ StmtPtr Parser::parseTypeDecl() {
     return s;
 }
 
+StmtPtr Parser::parseClassDecl() {
+    int line = previous().line, col = previous().col;
+    const Token& name = expect(Tok::Ident, "class name");
+    std::string superClass;
+    if (match(Tok::Inherits)) {
+        const Token& sname = expect(Tok::Ident, "super class name");
+        superClass = sname.lexeme;
+    }
+    expect(Tok::Newline, "end of line");
+    skipNewlines();
+
+    auto cstmt = std::make_unique<ClassDeclStmt>(line, col);
+    cstmt->name = name.lexeme;
+    cstmt->superClass = superClass;
+
+    while (!check(Tok::EndClass) && !check(Tok::Eof)) {
+        bool isPrivate = false;
+        if (match(Tok::Private)) {
+            isPrivate = true;
+        } else {
+            match(Tok::Public);
+        }
+
+        if (match(Tok::Procedure)) {
+            int mline = previous().line, mcol = previous().col;
+            std::string mname;
+            bool isCtor = false;
+            if (match(Tok::New)) {
+                mname = "NEW";
+                isCtor = true;
+            } else {
+                const Token& ptok = expect(Tok::Ident, "procedure name");
+                mname = ptok.lexeme;
+            }
+            expect(Tok::LParen, "'('");
+            std::vector<ParamDef> params;
+            if (!check(Tok::RParen)) {
+                do {
+                    bool isByRef = false;
+                    if (match(Tok::ByRef)) isByRef = true;
+                    else match(Tok::ByVal);
+                    const Token& pname = expect(Tok::Ident, "parameter name");
+                    expect(Tok::Colon, "':'");
+                    TypeInfo ptype = parseType();
+                    params.push_back({pname.lexeme, ptype, isByRef, pname.line, pname.col});
+                } while (match(Tok::Comma));
+            }
+            expect(Tok::RParen, "')'");
+            expect(Tok::Newline, "end of line");
+            skipNewlines();
+
+            Block body;
+            while (!check(Tok::EndProcedure) && !check(Tok::Eof)) {
+                if (StmtPtr st = parseStatementSafe()) body.push_back(std::move(st));
+                skipNewlines();
+            }
+            expect(Tok::EndProcedure, "'ENDPROCEDURE'");
+            expect(Tok::Newline, "end of line");
+
+            auto m = std::make_unique<ClassMethod>();
+            m->isFunction = false;
+            m->isPrivate = isPrivate;
+            m->isConstructor = isCtor;
+            m->name = mname;
+            m->params = std::move(params);
+            m->returnType = TypeInfo{BaseType::Void, "", false, 0, 0, 0, 0, 0};
+            m->body = std::move(body);
+            m->line = mline;
+            m->col = mcol;
+            cstmt->methods.push_back(std::move(m));
+        } else if (match(Tok::Function)) {
+            int mline = previous().line, mcol = previous().col;
+            const Token& ftok = expect(Tok::Ident, "function name");
+            expect(Tok::LParen, "'('");
+            std::vector<ParamDef> params;
+            if (!check(Tok::RParen)) {
+                do {
+                    bool isByRef = false;
+                    if (match(Tok::ByRef)) isByRef = true;
+                    else match(Tok::ByVal);
+                    const Token& pname = expect(Tok::Ident, "parameter name");
+                    expect(Tok::Colon, "':'");
+                    TypeInfo ptype = parseType();
+                    params.push_back({pname.lexeme, ptype, isByRef, pname.line, pname.col});
+                } while (match(Tok::Comma));
+            }
+            expect(Tok::RParen, "')'");
+            expect(Tok::Returns, "'RETURNS'");
+            TypeInfo retType = parseType();
+            expect(Tok::Newline, "end of line");
+            skipNewlines();
+
+            Block body;
+            while (!check(Tok::EndFunction) && !check(Tok::Eof)) {
+                if (StmtPtr st = parseStatementSafe()) body.push_back(std::move(st));
+                skipNewlines();
+            }
+            expect(Tok::EndFunction, "'ENDFUNCTION'");
+            expect(Tok::Newline, "end of line");
+
+            auto m = std::make_unique<ClassMethod>();
+            m->isFunction = true;
+            m->isPrivate = isPrivate;
+            m->isConstructor = false;
+            m->name = ftok.lexeme;
+            m->params = std::move(params);
+            m->returnType = retType;
+            m->body = std::move(body);
+            m->line = mline;
+            m->col = mcol;
+            cstmt->methods.push_back(std::move(m));
+        } else {
+            match(Tok::Declare);
+            const Token& propName = expect(Tok::Ident, "property or method name");
+            expect(Tok::Colon, "':'");
+            TypeInfo propType = parseType();
+            expect(Tok::Newline, "end of line");
+            cstmt->properties.push_back({propName.lexeme, propType, isPrivate, propName.line, propName.col});
+        }
+        skipNewlines();
+    }
+
+    expect(Tok::EndClass, "'ENDCLASS'");
+    expect(Tok::Newline, "end of line");
+    return cstmt;
+}
+
+StmtPtr Parser::parseSuperStmt() {
+    int line = previous().line, col = previous().col;
+    expect(Tok::Dot, "'.' after SUPER");
+    std::string methodName;
+    if (match(Tok::New)) {
+        methodName = "NEW";
+    } else {
+        methodName = expect(Tok::Ident, "method name").lexeme;
+    }
+    auto s = std::make_unique<CallStmt>(line, col);
+    s->isSuper = true;
+    s->name = methodName;
+    if (match(Tok::LParen)) {
+        if (!check(Tok::RParen)) {
+            s->args.push_back(parseExpr());
+            while (match(Tok::Comma)) s->args.push_back(parseExpr());
+        }
+        expect(Tok::RParen, "')'");
+    }
+    expect(Tok::Newline, "end of line");
+    return s;
+}
+
 StmtPtr Parser::parseProcedureDecl() {
     int line = previous().line, col = previous().col;
     const Token& name = expect(Tok::Ident, "procedure name");
@@ -304,9 +456,53 @@ StmtPtr Parser::parseFunctionDecl() {
 
 StmtPtr Parser::parseCall() {
     int line = previous().line, col = previous().col;
-    const Token& name = expect(Tok::Ident, "procedure name");
+    if (match(Tok::Super)) {
+        return parseSuperStmt();
+    }
+    const Token& firstTok = expect(Tok::Ident, "procedure or object name");
+    ExprPtr target = std::make_unique<VarExpr>(firstTok.line, firstTok.col);
+    static_cast<VarExpr&>(*target).name = firstTok.lexeme;
+
+    if (check(Tok::Dot) || check(Tok::LBracket)) {
+        while (check(Tok::Dot) || check(Tok::LBracket)) {
+            if (match(Tok::LBracket)) {
+                auto arr = std::make_unique<ArrayAccessExpr>(firstTok.line, firstTok.col);
+                arr->target = std::move(target);
+                arr->indices.push_back(parseExpr());
+                if (match(Tok::Comma)) arr->indices.push_back(parseExpr());
+                expect(Tok::RBracket, "']'");
+                target = std::move(arr);
+            } else if (match(Tok::Dot)) {
+                std::string memberName;
+                int mline = peek().line, mcol = peek().col;
+                if (match(Tok::New)) memberName = "NEW";
+                else memberName = expect(Tok::Ident, "field or method name").lexeme;
+
+                if (check(Tok::Dot) || check(Tok::LBracket)) {
+                    auto mem = std::make_unique<MemberAccessExpr>(mline, mcol);
+                    mem->target = std::move(target);
+                    mem->field = memberName;
+                    target = std::move(mem);
+                } else {
+                    auto s = std::make_unique<CallStmt>(line, col);
+                    s->target = std::move(target);
+                    s->name = memberName;
+                    if (match(Tok::LParen)) {
+                        if (!check(Tok::RParen)) {
+                            s->args.push_back(parseExpr());
+                            while (match(Tok::Comma)) s->args.push_back(parseExpr());
+                        }
+                        expect(Tok::RParen, "')'");
+                    }
+                    expect(Tok::Newline, "end of line");
+                    return s;
+                }
+            }
+        }
+    }
+
     auto s = std::make_unique<CallStmt>(line, col);
-    s->name = name.lexeme;
+    s->name = firstTok.lexeme;
     if (match(Tok::LParen)) {
         if (!check(Tok::RParen)) {
             s->args.push_back(parseExpr());
@@ -445,10 +641,28 @@ StmtPtr Parser::parseAssignOrMemberOrArray(const Token& name) {
             expect(Tok::RBracket, "']'");
             target = std::move(arr);
         } else if (match(Tok::Dot)) {
-            const Token& field = expect(Tok::Ident, "field name");
-            auto mem = std::make_unique<MemberAccessExpr>(field.line, field.col);
+            std::string fieldName;
+            int fline = peek().line, fcol = peek().col;
+            if (match(Tok::New)) fieldName = "NEW";
+            else fieldName = expect(Tok::Ident, "field or method name").lexeme;
+
+            if (check(Tok::LParen)) {
+                advance(); // consume '('
+                auto s = std::make_unique<CallStmt>(name.line, name.col);
+                s->target = std::move(target);
+                s->name = fieldName;
+                if (!check(Tok::RParen)) {
+                    s->args.push_back(parseExpr());
+                    while (match(Tok::Comma)) s->args.push_back(parseExpr());
+                }
+                expect(Tok::RParen, "')'");
+                expect(Tok::Newline, "end of line");
+                return s;
+            }
+
+            auto mem = std::make_unique<MemberAccessExpr>(fline, fcol);
             mem->target = std::move(target);
-            mem->field = field.lexeme;
+            mem->field = fieldName;
             target = std::move(mem);
         }
     }
@@ -697,11 +911,27 @@ ExprPtr Parser::parsePostfix(ExprPtr expr) {
             expect(Tok::RBracket, "']'");
             expr = std::move(arr);
         } else if (match(Tok::Dot)) {
-            const Token& field = expect(Tok::Ident, "field name");
-            auto mem = std::make_unique<MemberAccessExpr>(field.line, field.col);
-            mem->target = std::move(expr);
-            mem->field = field.lexeme;
-            expr = std::move(mem);
+            std::string fieldName;
+            int fline = peek().line, fcol = peek().col;
+            if (match(Tok::New)) fieldName = "NEW";
+            else fieldName = expect(Tok::Ident, "field or method name").lexeme;
+
+            if (match(Tok::LParen)) {
+                auto mc = std::make_unique<MethodCallExpr>(fline, fcol);
+                mc->target = std::move(expr);
+                mc->method = fieldName;
+                if (!check(Tok::RParen)) {
+                    mc->args.push_back(parseExpr());
+                    while (match(Tok::Comma)) mc->args.push_back(parseExpr());
+                }
+                expect(Tok::RParen, "')'");
+                expr = std::move(mc);
+            } else {
+                auto mem = std::make_unique<MemberAccessExpr>(fline, fcol);
+                mem->target = std::move(expr);
+                mem->field = fieldName;
+                expr = std::move(mem);
+            }
         }
     }
     return expr;
@@ -770,6 +1000,38 @@ ExprPtr Parser::parsePrimary() {
             }
             fail(t, "expected an expression, found " + describe(t));
             return nullptr;
+
+        case Tok::New: {
+            advance();
+            const Token& cname = expect(Tok::Ident, "class name after NEW");
+            auto e = std::make_unique<NewExpr>(t.line, t.col);
+            e->className = cname.lexeme;
+            expect(Tok::LParen, "'('");
+            if (!check(Tok::RParen)) {
+                e->args.push_back(parseExpr());
+                while (match(Tok::Comma)) e->args.push_back(parseExpr());
+            }
+            expect(Tok::RParen, "')'");
+            return e;
+        }
+
+        case Tok::Super: {
+            advance();
+            expect(Tok::Dot, "'.' after SUPER");
+            std::string mname;
+            if (match(Tok::New)) mname = "NEW";
+            else mname = expect(Tok::Ident, "method name after SUPER.").lexeme;
+            auto e = std::make_unique<MethodCallExpr>(t.line, t.col);
+            e->isSuper = true;
+            e->method = mname;
+            expect(Tok::LParen, "'('");
+            if (!check(Tok::RParen)) {
+                e->args.push_back(parseExpr());
+                while (match(Tok::Comma)) e->args.push_back(parseExpr());
+            }
+            expect(Tok::RParen, "')'");
+            return e;
+        }
 
         case Tok::Ident: {
             Token id = advance();

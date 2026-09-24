@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
 
     // C Code Generation Mode (-o <file.c> or -c / --emit-c)
     if (!outPath.empty() || emitC) {
-        std::string c = CodeGen(sema.variables(), sema.recordTypes(), sema.functions()).generate(program);
+        std::string c = CodeGen(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).generate(program);
         if (outPath.empty()) {
             std::cout << c;
         } else {
@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
     }
 
     // Bytecode Compilation
-    Chunk chunk = BytecodeCompiler(sema.variables(), sema.recordTypes(), sema.functions()).compile(program);
+    Chunk chunk = BytecodeCompiler(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).compile(program);
 
     // Disassembly Mode (-d / --dump-bc)
     if (dumpBc) {

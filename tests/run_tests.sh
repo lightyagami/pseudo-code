@@ -57,6 +57,8 @@ run_test "tests/test_file_io.pseudo" ""
 run_test "tests/test_repeat.pseudo" ""
 run_test "tests/test_constants.pseudo" ""
 run_test "tests/test_builtins.pseudo" ""
+run_test "tests/test_oop.pseudo" ""
+run_test "tests/test_banking_oop.pseudo" ""
 
 run_c_to_pseudo_test() {
     local file="$1"

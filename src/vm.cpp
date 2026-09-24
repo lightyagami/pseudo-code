@@ -130,6 +130,12 @@ Value VM::deref(const Value& v) {
                 if (it != r.record->fields.end()) return it->second;
             }
             return Value::makeNil();
+        case RefTarget::Kind::ObjectField:
+            if (r.object) {
+                auto it = r.object->fields.find(r.fieldName);
+                if (it != r.object->fields.end()) return it->second;
+            }
+            return Value::makeNil();
     }
     return Value::makeNil();
 }
@@ -161,6 +167,11 @@ void VM::writeThrough(const Value& ref, Value newVal) {
         case RefTarget::Kind::RecordField:
             if (r.record) {
                 r.record->fields[r.fieldName] = copyValue(newVal);
+            }
+            break;
+        case RefTarget::Kind::ObjectField:
+            if (r.object) {
+                r.object->fields[r.fieldName] = copyValue(newVal);
             }
             break;
     }
@@ -303,12 +314,15 @@ int VM::run(const Chunk& chunk, bool isRepl) {
 
             case OpCode::OpPushRefField: {
                 Value target = pop();
-                if (!target.isRecord() || !target.recVal) {
-                    runtimeErr("Attempt to access field of non-record", inst.line);
+                const std::string& field = chunk.constants[inst.a].asString();
+                if (target.isRecord() && target.recVal) {
+                    push(Value::makeRef(RefTarget::makeField(target.recVal, field)));
+                } else if (target.isObject() && target.objVal) {
+                    push(Value::makeRef(RefTarget::makeObjectField(target.objVal, field)));
+                } else {
+                    runtimeErr("Attempt to access field of non-record/non-object", inst.line);
                     return 1;
                 }
-                const std::string& field = chunk.constants[inst.a].asString();
-                push(Value::makeRef(RefTarget::makeField(target.recVal, field)));
                 break;
             }
 
@@ -382,16 +396,16 @@ int VM::run(const Chunk& chunk, bool isRepl) {
 
             case OpCode::OpGetField: {
                 Value target = pop();
-                if (!target.isRecord() || !target.recVal) {
-                    runtimeErr("Attempt to access field of non-record", inst.line);
-                    return 1;
-                }
                 const std::string& field = chunk.constants[inst.a].asString();
-                auto it = target.recVal->fields.find(field);
-                if (it != target.recVal->fields.end()) {
-                    push(it->second);
+                if (target.isRecord() && target.recVal) {
+                    auto it = target.recVal->fields.find(field);
+                    push(it != target.recVal->fields.end() ? it->second : Value::makeNil());
+                } else if (target.isObject() && target.objVal) {
+                    auto it = target.objVal->fields.find(field);
+                    push(it != target.objVal->fields.end() ? it->second : Value::makeNil());
                 } else {
-                    push(Value::makeNil());
+                    runtimeErr("Attempt to access field of non-record/non-object", inst.line);
+                    return 1;
                 }
                 break;
             }
@@ -399,12 +413,167 @@ int VM::run(const Chunk& chunk, bool isRepl) {
             case OpCode::OpSetField: {
                 Value target = pop();
                 Value val = pop();
-                if (!target.isRecord() || !target.recVal) {
-                    runtimeErr("Attempt to set field of non-record", inst.line);
+                const std::string& field = chunk.constants[inst.a].asString();
+                if (target.isRecord() && target.recVal) {
+                    target.recVal->fields[field] = copyValue(val);
+                } else if (target.isObject() && target.objVal) {
+                    // Objects use shared_ptr — mutation via shared reference
+                    target.objVal->fields[field] = copyValue(val);
+                } else {
+                    runtimeErr("Attempt to set field of non-record/non-object", inst.line);
                     return 1;
                 }
-                const std::string& field = chunk.constants[inst.a].asString();
-                target.recVal->fields[field] = copyValue(val);
+                break;
+            }
+
+            case OpCode::OpNewObject: {
+                const std::string& className = chunk.constants[inst.a].asString();
+                auto obj = std::make_shared<ObjectData>();
+                obj->className = className;
+
+                // Initialize fields from class hierarchy
+                {
+                    std::string cur = className;
+                    while (!cur.empty()) {
+                        auto pcit = chunk.classTypes.find(cur);
+                        if (pcit == chunk.classTypes.end()) break;
+                        for (const auto& prop : pcit->second.properties) {
+                            if (obj->fields.find(prop.name) == obj->fields.end()) {
+                                TypeInfo ti{prop.type.base, prop.type.recordName, false, 0, 0, 0, 0, 0};
+                                obj->fields[prop.name] = defaultValue(ti);
+                            }
+                        }
+                        cur = pcit->second.superClass;
+                    }
+                }
+
+                Value objVal = Value::makeObject(obj);
+
+                // Call constructor if it exists
+                std::string ctorKey = className + "::NEW";
+                auto cfit = chunk.functions.find(ctorKey);
+                if (cfit != chunk.functions.end()) {
+                    const FunctionInfo& fi = cfit->second;
+                    int32_t argCount = inst.b;
+                    size_t argsStart = stack_.size() - static_cast<size_t>(argCount);
+                    std::vector<Value> savedArgs(stack_.begin() + argsStart, stack_.end());
+                    stack_.resize(argsStart);
+                    push(objVal);
+                    for (auto& a : savedArgs) push(std::move(a));
+                    size_t stackBase = stack_.size() - static_cast<size_t>(fi.numParams);
+                    for (size_t i = fi.numParams; i < fi.localVars.size(); ++i) {
+                        push(defaultValue(fi.localVars[i].second));
+                    }
+                    CallFrame frame;
+                    frame.funcName = ctorKey;
+                    frame.returnIp = ip;
+                    frame.stackBase = stackBase;
+                    frame.numLocals = static_cast<int>(fi.localVars.size());
+                    frame.isFunction = false;
+                    frame.returnObject = objVal;
+                    callFrames_.push_back(frame);
+                    ip = fi.entryIp;
+                } else {
+                    push(objVal);
+                }
+                break;
+            }
+
+            case OpCode::OpInvokeMethod: {
+                const std::string& methodName = chunk.constants[inst.a].asString();
+                int32_t argCount = inst.b;
+                size_t argsStart = stack_.size() - static_cast<size_t>(argCount);
+                Value targetObj = stack_[argsStart - 1];
+                if (!targetObj.isObject() || !targetObj.objVal) {
+                    runtimeErr("Method call on non-object", inst.line);
+                    return 1;
+                }
+                std::string className = targetObj.objVal->className;
+                std::string key;
+                std::string cur = className;
+                while (!cur.empty()) {
+                    std::string candidate = cur + "::" + methodName;
+                    if (chunk.functions.find(candidate) != chunk.functions.end()) {
+                        key = candidate;
+                        break;
+                    }
+                    auto cit = chunk.classTypes.find(cur);
+                    cur = (cit != chunk.classTypes.end()) ? cit->second.superClass : "";
+                }
+                if (key.empty()) {
+                    runtimeErr("Method '" + methodName + "' not found on class '" + className + "'", inst.line);
+                    return 1;
+                }
+                const FunctionInfo& mfi = chunk.functions.at(key);
+                std::vector<Value> savedArgs(stack_.begin() + argsStart, stack_.end());
+                stack_.resize(argsStart - 1);
+                push(targetObj);
+                for (auto& a : savedArgs) push(std::move(a));
+                size_t stackBase = stack_.size() - static_cast<size_t>(mfi.numParams);
+                for (size_t i = mfi.numParams; i < mfi.localVars.size(); ++i) {
+                    push(defaultValue(mfi.localVars[i].second));
+                }
+                CallFrame frame;
+                frame.funcName = key;
+                frame.returnIp = ip;
+                frame.stackBase = stackBase;
+                frame.numLocals = static_cast<int>(mfi.localVars.size());
+                frame.isFunction = (inst.c != 0);
+                callFrames_.push_back(frame);
+                ip = mfi.entryIp;
+                break;
+            }
+
+            case OpCode::OpSuperCall: {
+                const std::string& methodName = chunk.constants[inst.a].asString();
+                int32_t argCount = inst.b;
+                size_t argsStart = stack_.size() - static_cast<size_t>(argCount);
+                Value thisObj = stack_[argsStart - 1];
+                if (!thisObj.isObject() || !thisObj.objVal) {
+                    runtimeErr("SUPER call on non-object", inst.line);
+                    return 1;
+                }
+                std::string curClass;
+                if (!callFrames_.empty()) {
+                    const std::string& fn = callFrames_.back().funcName;
+                    size_t sep = fn.find("::");
+                    if (sep != std::string::npos) curClass = fn.substr(0, sep);
+                }
+                std::string superClass;
+                auto cit = chunk.classTypes.find(curClass);
+                if (cit != chunk.classTypes.end()) superClass = cit->second.superClass;
+                std::string key;
+                std::string cur = superClass;
+                while (!cur.empty()) {
+                    std::string candidate = cur + "::" + methodName;
+                    if (chunk.functions.find(candidate) != chunk.functions.end()) {
+                        key = candidate;
+                        break;
+                    }
+                    auto sit = chunk.classTypes.find(cur);
+                    cur = (sit != chunk.classTypes.end()) ? sit->second.superClass : "";
+                }
+                if (key.empty()) {
+                    runtimeErr("Super method '" + methodName + "' not found", inst.line);
+                    return 1;
+                }
+                const FunctionInfo& sfi = chunk.functions.at(key);
+                std::vector<Value> savedArgs(stack_.begin() + argsStart, stack_.end());
+                stack_.resize(argsStart - 1);
+                push(thisObj);
+                for (auto& a : savedArgs) push(std::move(a));
+                size_t stackBase = stack_.size() - static_cast<size_t>(sfi.numParams);
+                for (size_t i = sfi.numParams; i < sfi.localVars.size(); ++i) {
+                    push(defaultValue(sfi.localVars[i].second));
+                }
+                CallFrame frame;
+                frame.funcName = key;
+                frame.returnIp = ip;
+                frame.stackBase = stackBase;
+                frame.numLocals = static_cast<int>(sfi.localVars.size());
+                frame.isFunction = (inst.c != 0);
+                callFrames_.push_back(frame);
+                ip = sfi.entryIp;
                 break;
             }
 
@@ -440,6 +609,10 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                 callFrames_.pop_back();
                 stack_.resize(frame.stackBase);
                 ip = frame.returnIp;
+                // Constructors: push the new object back to the caller's stack
+                if (frame.returnObject.isObject()) {
+                    push(frame.returnObject);
+                }
                 break;
             }
 

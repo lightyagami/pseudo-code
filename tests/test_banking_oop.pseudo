@@ -1,0 +1,165 @@
+// ==========================================
+// CUSTOMER CLASS
+// ==========================================
+CLASS Customer
+    PRIVATE customerId : INTEGER
+    PRIVATE name : STRING
+
+    PUBLIC PROCEDURE NEW(id : INTEGER, custName : STRING)
+        customerId <- id
+        name <- custName
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION GetName() RETURNS STRING
+        RETURN name
+    ENDFUNCTION
+
+    PUBLIC FUNCTION GetId() RETURNS INTEGER
+        RETURN customerId
+    ENDFUNCTION
+ENDCLASS
+
+// ==========================================
+// BASE ACCOUNT CLASS
+// ==========================================
+CLASS Account
+    PRIVATE accountNumber : STRING
+    PRIVATE balance : INTEGER
+    PRIVATE ownerName : STRING
+
+    PUBLIC PROCEDURE NEW(accNum : STRING, owner : Customer, initBal : INTEGER)
+        accountNumber <- accNum
+        ownerName <- owner.GetName()
+        balance <- initBal
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION GetAccountNumber() RETURNS STRING
+        RETURN accountNumber
+    ENDFUNCTION
+
+    PUBLIC FUNCTION GetBalance() RETURNS INTEGER
+        RETURN balance
+    ENDFUNCTION
+
+    PUBLIC FUNCTION GetOwnerName() RETURNS STRING
+        RETURN ownerName
+    ENDFUNCTION
+
+    PUBLIC PROCEDURE UpdateBalance(newBal : INTEGER)
+        balance <- newBal
+    ENDPROCEDURE
+
+    PUBLIC PROCEDURE Deposit(amount : INTEGER)
+        IF amount <= 0 THEN
+            OUTPUT "Error: Invalid deposit amount"
+        ELSE
+            balance <- balance + amount
+        ENDIF
+    ENDPROCEDURE
+
+    PUBLIC PROCEDURE DisplayAccount()
+        OUTPUT "Account: ", accountNumber
+        OUTPUT "Owner: ", ownerName
+        OUTPUT "Balance: ", balance
+    ENDPROCEDURE
+ENDCLASS
+
+// ==========================================
+// SAVINGS ACCOUNT CLASS (INHERITS ACCOUNT)
+// ==========================================
+CLASS SavingsAccount INHERITS Account
+    PRIVATE interestRate : INTEGER
+
+    PUBLIC PROCEDURE NEW(accNum : STRING, owner : Customer, initBal : INTEGER, rate : INTEGER)
+        CALL SUPER.NEW(accNum, owner, initBal)
+        interestRate <- rate
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION Withdraw(amount : INTEGER) RETURNS BOOLEAN
+        IF amount > THIS.GetBalance() THEN
+            OUTPUT "Error: Insufficient balance"
+            RETURN FALSE
+        ENDIF
+        IF amount > 50000 THEN
+            OUTPUT "Error: Savings withdrawal limit exceeded"
+            RETURN FALSE
+        ENDIF
+        CALL THIS.UpdateBalance(THIS.GetBalance() - amount)
+        RETURN TRUE
+    ENDFUNCTION
+
+    PUBLIC FUNCTION CalculateInterest() RETURNS INTEGER
+        RETURN (THIS.GetBalance() * interestRate) DIV 100
+    ENDFUNCTION
+ENDCLASS
+
+// ==========================================
+// CURRENT ACCOUNT CLASS (INHERITS ACCOUNT)
+// ==========================================
+CLASS CurrentAccount INHERITS Account
+    PRIVATE overdraftLimit : INTEGER
+
+    PUBLIC PROCEDURE NEW(accNum : STRING, owner : Customer, initBal : INTEGER, limit : INTEGER)
+        CALL SUPER.NEW(accNum, owner, initBal)
+        overdraftLimit <- limit
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION Withdraw(amount : INTEGER) RETURNS BOOLEAN
+        IF amount > (THIS.GetBalance() + overdraftLimit) THEN
+            OUTPUT "Error: Overdraft limit exceeded"
+            RETURN FALSE
+        ENDIF
+        CALL THIS.UpdateBalance(THIS.GetBalance() - amount)
+        RETURN TRUE
+    ENDFUNCTION
+ENDCLASS
+
+// ==========================================
+// MAIN PROGRAM EXECUTION
+// ==========================================
+DECLARE customer1 : Customer
+DECLARE customer2 : Customer
+customer1 <- NEW Customer(101, "Rahul")
+customer2 <- NEW Customer(102, "Aman")
+
+DECLARE savings : SavingsAccount
+DECLARE current : CurrentAccount
+savings <- NEW SavingsAccount("SB1001", customer1, 100000, 5)
+current <- NEW CurrentAccount("CA2001", customer2, 25000, 50000)
+
+// Deposit 10,000 into savings
+CALL savings.Deposit(10000)
+
+// Transfer 20,000: Savings -> Current
+DECLARE transferOk : BOOLEAN
+transferOk <- savings.Withdraw(20000)
+IF transferOk THEN
+    CALL current.Deposit(20000)
+    OUTPUT "Transfer successful"
+ELSE
+    OUTPUT "Transaction failed"
+ENDIF
+
+OUTPUT "Savings Balance: ", savings.GetBalance()
+OUTPUT "Current Balance: ", current.GetBalance()
+
+// Undo Last Transaction: reverse transfer (Current -> Savings)
+OUTPUT "Reversing transaction..."
+DECLARE undoOk : BOOLEAN
+undoOk <- current.Withdraw(20000)
+IF undoOk THEN
+    CALL savings.Deposit(20000)
+    OUTPUT "Transfer reversed"
+ELSE
+    OUTPUT "Undo failed"
+ENDIF
+
+OUTPUT "After Undo:"
+OUTPUT "Savings Balance: ", savings.GetBalance()
+OUTPUT "Current Balance: ", current.GetBalance()
+
+OUTPUT "--- Customer 1 Account Details ---"
+CALL savings.DisplayAccount()
+
+OUTPUT "--- Customer 2 Account Details ---"
+CALL current.DisplayAccount()

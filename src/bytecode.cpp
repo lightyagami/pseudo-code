@@ -26,6 +26,9 @@ void Value::print(std::ostream& os) const {
         case ValueKind::Record:
             os << "<record " << (recVal ? recVal->typeName : "") << ">";
             break;
+        case ValueKind::Object:
+            os << "<object " << (objVal ? objVal->className : "") << ">";
+            break;
         case ValueKind::Ref:
             os << "<ref>";
             break;
@@ -56,6 +59,9 @@ const char* opCodeName(OpCode op) {
         case OpCode::OpCall:               return "OP_CALL";
         case OpCode::OpReturn:             return "OP_RETURN";
         case OpCode::OpReturnVal:          return "OP_RETURN_VAL";
+        case OpCode::OpNewObject:          return "OP_NEW_OBJECT";
+        case OpCode::OpInvokeMethod:       return "OP_INVOKE_METHOD";
+        case OpCode::OpSuperCall:          return "OP_SUPER_CALL";
         case OpCode::OpOpenFile:           return "OP_OPEN_FILE";
         case OpCode::OpCloseFile:          return "OP_CLOSE_FILE";
         case OpCode::OpReadFile:           return "OP_READ_FILE";
@@ -150,6 +156,17 @@ void printInstruction(std::ostream& os, const Chunk& chunk, size_t ip) {
                 os << " " << chunk.constants[inst.a].asString();
             os << " args:" << inst.b << (inst.c ? " [returns val]" : " [void]");
             break;
+        case OpCode::OpNewObject:
+            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.constants.size()))
+                os << " class:" << chunk.constants[inst.a].asString();
+            os << " args:" << inst.b;
+            break;
+        case OpCode::OpInvokeMethod:
+        case OpCode::OpSuperCall:
+            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.constants.size()))
+                os << " method:" << chunk.constants[inst.a].asString();
+            os << " args:" << inst.b << (inst.c ? " [returns val]" : " [void]");
+            break;
         case OpCode::OpJump:
         case OpCode::OpJumpIfFalse:
         case OpCode::OpJumpIfFalseOrPop:
@@ -206,8 +223,9 @@ void dumpBytecode(const Chunk& chunk, const std::string& name, std::ostream& os)
 
 BytecodeCompiler::BytecodeCompiler(const std::vector<std::pair<std::string, TypeInfo>>& vars,
                                    const std::unordered_map<std::string, RecordDef>& records,
-                                   const std::unordered_map<std::string, Sema::FunctionSig>& funcs)
-    : allVars_(vars), recordTypes_(records), functions_(funcs) {
+                                   const std::unordered_map<std::string, Sema::FunctionSig>& funcs,
+                                   const std::unordered_map<std::string, Sema::ClassInfo>& classes)
+    : allVars_(vars), recordTypes_(records), functions_(funcs), classTypes_(classes) {
     for (size_t i = 0; i < vars.size(); ++i) {
         slotMap_[vars[i].first] = static_cast<int>(i);
         typeMap_[vars[i].first] = vars[i].second;
@@ -227,7 +245,34 @@ TypeInfo BytecodeCompiler::getVarType(const std::string& name) const {
         auto it = localTypeMap_.find(name);
         if (it != localTypeMap_.end()) return it->second;
     }
-    return typeMap_.at(name);
+    auto git = typeMap_.find(name);
+    if (git != typeMap_.end()) return git->second;
+    if (!currentClassName_.empty()) {
+        std::string cur = currentClassName_;
+        while (!cur.empty()) {
+            auto it = classTypes_.find(cur);
+            if (it == classTypes_.end()) break;
+            for (const auto& p : it->second.properties) {
+                if (p.name == name) return p.type;
+            }
+            cur = it->second.superClass;
+        }
+    }
+    return TypeInfo{BaseType::Error, "", false, 0, 0, 0, 0, 0};
+}
+
+bool BytecodeCompiler::isClassProperty(const std::string& name) const {
+    if (currentClassName_.empty()) return false;
+    std::string cur = currentClassName_;
+    while (!cur.empty()) {
+        auto it = classTypes_.find(cur);
+        if (it == classTypes_.end()) break;
+        for (const auto& p : it->second.properties) {
+            if (p.name == name) return true;
+        }
+        cur = it->second.superClass;
+    }
+    return false;
 }
 
 int BytecodeCompiler::addConstant(Value v) {
@@ -359,6 +404,63 @@ Chunk BytecodeCompiler::compile(const Block& program) {
             chunk_.functions[f.name] = fi;
 
             insideFunction_ = false;
+        } else if (stmt->kind == Stmt::Kind::ClassDecl) {
+            auto& cls = static_cast<const ClassDeclStmt&>(*stmt);
+            chunk_.classTypes = classTypes_;
+
+            for (const auto& methodPtr : cls.methods) {
+                const ClassMethod& method = *methodPtr;
+                std::string key = cls.name + "::" + method.name;
+                FunctionInfo fi;
+                fi.name = key;
+                fi.isFunction = method.isFunction;
+                fi.entryIp = chunk_.code.size();
+                fi.numParams = static_cast<int>(method.params.size()) + 1; // +1 for THIS
+
+                insideFunction_ = true;
+                currentClassName_ = cls.name;
+                localVars_.clear();
+                localSlotMap_.clear();
+                localTypeMap_.clear();
+                localIsByRef_.clear();
+
+                // Slot 0 = THIS
+                TypeInfo thisType{BaseType::Object, cls.name, false, 0, 0, 0, 0, 0};
+                localVars_.emplace_back("THIS", thisType);
+                localSlotMap_["THIS"] = 0;
+                localSlotMap_["this"] = 0;
+                localTypeMap_["THIS"] = thisType;
+                localTypeMap_["this"] = thisType;
+                localIsByRef_["THIS"] = false;
+                localIsByRef_["this"] = false;
+                fi.paramIsByRef.push_back(false); // THIS is not by-ref
+
+                for (const auto& param : method.params) {
+                    int slot = static_cast<int>(localVars_.size());
+                    localVars_.emplace_back(param.name, param.type);
+                    localSlotMap_[param.name] = slot;
+                    localTypeMap_[param.name] = param.type;
+                    localIsByRef_[param.name] = param.isByRef;
+                    fi.paramIsByRef.push_back(param.isByRef);
+                }
+
+                compileBlock(method.body);
+                if (!method.isFunction) {
+                    emit(OpCode::OpReturn, 0, 0, 0, 0, method.line);
+                } else {
+                    // fallthrough default return
+                    int defConst = addConstant(Value::makeInt(0));
+                    emit(OpCode::OpConstant, defConst, 0, 0, 0, method.line);
+                    emit(OpCode::OpReturnVal, 0, 0, 0, 0, method.line);
+                }
+
+                fi.numLocals = static_cast<int>(localVars_.size());
+                fi.localVars = localVars_;
+                chunk_.functions[key] = fi;
+
+                insideFunction_ = false;
+                currentClassName_.clear();
+            }
         }
     }
 
@@ -368,7 +470,8 @@ Chunk BytecodeCompiler::compile(const Block& program) {
     for (const auto& stmt : program) {
         if (stmt->kind != Stmt::Kind::TypeDecl &&
             stmt->kind != Stmt::Kind::ProcedureDecl &&
-            stmt->kind != Stmt::Kind::FunctionDecl) {
+            stmt->kind != Stmt::Kind::FunctionDecl &&
+            stmt->kind != Stmt::Kind::ClassDecl) {
             compileStmt(*stmt);
         }
     }
@@ -386,6 +489,15 @@ void BytecodeCompiler::compileLValueRef(const Expr& e) {
     switch (e.kind) {
         case Expr::Kind::Var: {
             auto& v = static_cast<const VarExpr&>(e);
+            if (insideFunction_ && !currentClassName_.empty() &&
+                localSlotMap_.find(v.name) == localSlotMap_.end() &&
+                slotMap_.find(v.name) == slotMap_.end() &&
+                isClassProperty(v.name)) {
+                emit(OpCode::OpGetVar, encodeSlot(0, true), 0, 0, 0, v.line);
+                int fieldConst = addConstant(Value::makeString(v.name));
+                emit(OpCode::OpPushRefField, fieldConst, 0, 0, 0, v.line);
+                break;
+            }
             int enc = getVarSlot(v.name);
             emit(OpCode::OpPushRefVar, enc, 0, 0, 0, v.line);
             break;
@@ -496,6 +608,15 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
         case Stmt::Kind::Assign: {
             auto& a = static_cast<const AssignStmt&>(s);
             compileExpr(*a.value);
+            if (insideFunction_ && !currentClassName_.empty() &&
+                localSlotMap_.find(a.name) == localSlotMap_.end() &&
+                slotMap_.find(a.name) == slotMap_.end() &&
+                isClassProperty(a.name)) {
+                emit(OpCode::OpGetVar, encodeSlot(0, true), 0, 0, 0, a.line);
+                int fieldConst = addConstant(Value::makeString(a.name));
+                emit(OpCode::OpSetField, fieldConst, 0, 0, 0, a.line);
+                break;
+            }
             TypeInfo varType = getVarType(a.name);
             if (varType.base == BaseType::Real && a.value->type.base == BaseType::Integer) {
                 emit(OpCode::OpWidenReal, 0, 0, 0, 0, a.line);
@@ -656,17 +777,31 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
             break;
         case Stmt::Kind::Call: {
             auto& c = static_cast<const CallStmt&>(s);
-            auto it = functions_.find(c.name);
-            int nameConst = addConstant(Value::makeString(c.name));
-            for (size_t i = 0; i < c.args.size(); ++i) {
-                bool isRef = (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef);
-                if (isRef) {
-                    compileLValueRef(*c.args[i]);
-                } else {
-                    compileExpr(*c.args[i]);
+            if (c.isSuper) {
+                // SUPER.Method(args) — push THIS (slot 0 local), then args
+                emit(OpCode::OpGetVar, encodeSlot(0, true), 0, 0, 0, c.line);
+                for (auto& arg : c.args) compileExpr(*arg);
+                int nameConst = addConstant(Value::makeString(c.name));
+                emit(OpCode::OpSuperCall, nameConst, static_cast<int32_t>(c.args.size()), 0, 0, c.line);
+            } else if (c.target) {
+                // obj.Method(args) — push target object, then args
+                compileExpr(*c.target);
+                for (auto& arg : c.args) compileExpr(*arg);
+                int nameConst = addConstant(Value::makeString(c.name));
+                emit(OpCode::OpInvokeMethod, nameConst, static_cast<int32_t>(c.args.size()), 0, 0, c.line);
+            } else {
+                auto it = functions_.find(c.name);
+                int nameConst = addConstant(Value::makeString(c.name));
+                for (size_t i = 0; i < c.args.size(); ++i) {
+                    bool isRef = (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef);
+                    if (isRef) {
+                        compileLValueRef(*c.args[i]);
+                    } else {
+                        compileExpr(*c.args[i]);
+                    }
                 }
+                emit(OpCode::OpCall, nameConst, static_cast<int32_t>(c.args.size()), 0, 0, c.line);
             }
-            emit(OpCode::OpCall, nameConst, static_cast<int32_t>(c.args.size()), 0, 0, c.line);
             break;
         }
         case Stmt::Kind::Return: {
@@ -724,6 +859,7 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
         case Stmt::Kind::TypeDecl:
         case Stmt::Kind::ProcedureDecl:
         case Stmt::Kind::FunctionDecl:
+        case Stmt::Kind::ClassDecl:
             break;
     }
 }
@@ -758,6 +894,15 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
         }
         case Expr::Kind::Var: {
             auto& v = static_cast<const VarExpr&>(e);
+            if (insideFunction_ && !currentClassName_.empty() &&
+                localSlotMap_.find(v.name) == localSlotMap_.end() &&
+                slotMap_.find(v.name) == slotMap_.end() &&
+                isClassProperty(v.name)) {
+                emit(OpCode::OpGetVar, encodeSlot(0, true), 0, 0, 0, v.line);
+                int fieldConst = addConstant(Value::makeString(v.name));
+                emit(OpCode::OpGetField, fieldConst, 0, 0, 0, v.line);
+                break;
+            }
             emit(OpCode::OpGetVar, getVarSlot(v.name), 0, 0, 0, v.line);
             break;
         }
@@ -872,6 +1017,31 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
                 }
             }
             emit(OpCode::OpCall, nameConst, static_cast<int32_t>(uc.args.size()), 1, 0, uc.line);
+            break;
+        }
+        case Expr::Kind::New: {
+            auto& n = static_cast<const NewExpr&>(e);
+            // Push args (constructor params after THIS)
+            for (auto& arg : n.args) compileExpr(*arg);
+            int classConst = addConstant(Value::makeString(n.className));
+            emit(OpCode::OpNewObject, classConst, static_cast<int32_t>(n.args.size()), 0, 0, n.line);
+            break;
+        }
+        case Expr::Kind::MethodCall: {
+            auto& m = static_cast<const MethodCallExpr&>(e);
+            if (m.isSuper) {
+                // SUPER.Method() inside a method — push THIS
+                emit(OpCode::OpGetVar, encodeSlot(0, true), 0, 0, 0, m.line);
+            } else {
+                compileExpr(*m.target);
+            }
+            for (auto& arg : m.args) compileExpr(*arg);
+            int nameConst = addConstant(Value::makeString(m.method));
+            if (m.isSuper) {
+                emit(OpCode::OpSuperCall, nameConst, static_cast<int32_t>(m.args.size()), 1, 0, m.line);
+            } else {
+                emit(OpCode::OpInvokeMethod, nameConst, static_cast<int32_t>(m.args.size()), 1, 0, m.line);
+            }
             break;
         }
     }

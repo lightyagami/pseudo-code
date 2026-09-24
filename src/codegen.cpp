@@ -1,9 +1,11 @@
 #include "codegen.h"
+#include <functional>
 
 CodeGen::CodeGen(const std::vector<std::pair<std::string, TypeInfo>>& vars,
                  const std::unordered_map<std::string, RecordDef>& records,
-                 const std::unordered_map<std::string, Sema::FunctionSig>& funcs)
-    : vars_(vars), recordTypes_(records), functions_(funcs) {
+                 const std::unordered_map<std::string, Sema::FunctionSig>& funcs,
+                 const std::unordered_map<std::string, Sema::ClassInfo>& classes)
+    : vars_(vars), recordTypes_(records), functions_(funcs), classTypes_(classes) {
     for (const auto& v : vars_) varMap_[v.first] = v.second;
 }
 
@@ -13,6 +15,7 @@ std::string CodeGen::cTypeName(const std::string& name) {
 
 std::string CodeGen::cBaseType(const TypeInfo& t) {
     if (t.base == BaseType::Record) return cTypeName(t.recordName);
+    if (t.base == BaseType::Object) return cClassTypeName(t.recordName);
     switch (t.base) {
         case BaseType::Integer: return "long long";
         case BaseType::Real:    return "double";
@@ -23,7 +26,7 @@ std::string CodeGen::cBaseType(const TypeInfo& t) {
 }
 
 std::string CodeGen::zeroValue(const TypeInfo& t) {
-    if (t.base == BaseType::Record) return "{0}";
+    if (t.base == BaseType::Record || t.base == BaseType::Object) return "{0}";
     switch (t.base) {
         case BaseType::Integer: return "0";
         case BaseType::Real:    return "0.0";
@@ -307,6 +310,53 @@ void CodeGen::emitRecordDefinitions() {
     }
 }
 
+std::string CodeGen::cClassTypeName(const std::string& name) {
+    return "pc_class_" + name;
+}
+
+void CodeGen::emitClassDefinitions() {
+    if (classTypes_.empty()) return;
+    // Forward declarations
+    for (const auto& kv : classTypes_) {
+        out_ << "typedef struct " << cClassTypeName(kv.first) << " " << cClassTypeName(kv.first) << ";\n";
+    }
+    out_ << "\n";
+    // Emit structs. Walk class hierarchy so superclass properties appear too.
+    // We use a topological approach: emit a class only after its superclass.
+    std::unordered_set<std::string> emitted;
+    std::function<void(const std::string&)> emitClass = [&](const std::string& name) {
+        if (emitted.count(name)) return;
+        auto cit = classTypes_.find(name);
+        if (cit == classTypes_.end()) return;
+        const auto& ci = cit->second;
+        if (!ci.superClass.empty()) emitClass(ci.superClass); // ensure parent emitted first
+        out_ << "struct " << cClassTypeName(name) << " {\n";
+        // Inherited fields from superclass chain
+        std::vector<std::string> chain;
+        std::string cur = ci.superClass;
+        while (!cur.empty()) {
+            chain.push_back(cur);
+            auto pcit = classTypes_.find(cur);
+            cur = (pcit != classTypes_.end()) ? pcit->second.superClass : "";
+        }
+        // Emit inherited fields (from root to parent)
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            auto pcit = classTypes_.find(*it);
+            if (pcit == classTypes_.end()) continue;
+            for (const auto& prop : pcit->second.properties) {
+                out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << ";\n";
+            }
+        }
+        // Own fields
+        for (const auto& prop : ci.properties) {
+            out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << ";\n";
+        }
+        out_ << "};\n\n";
+        emitted.insert(name);
+    };
+    for (const auto& kv : classTypes_) emitClass(kv.first);
+}
+
 void CodeGen::emitFunctionPrototypes() {
     for (const auto& kv : functions_) {
         const auto& fn = kv.second;
@@ -375,11 +425,78 @@ void CodeGen::emitFunctionDefinitions(const Block& program) {
     insideFunction_ = false;
 }
 
+void CodeGen::emitClassMethods(const Block& program) {
+    insideFunction_ = true;
+    for (const auto& s : program) {
+        if (s->kind != Stmt::Kind::ClassDecl) continue;
+        auto& cls = static_cast<const ClassDeclStmt&>(*s);
+        currentClassName_ = cls.name;
+        std::string structType = cClassTypeName(cls.name);
+
+        // Find constructor (NEW method)
+        const ClassMethod* ctorMethod = nullptr;
+        for (const auto& methodPtr : cls.methods) {
+            if (methodPtr->isConstructor) { ctorMethod = methodPtr.get(); break; }
+        }
+
+        for (const auto& methodPtr : cls.methods) {
+            const ClassMethod& method = *methodPtr;
+            currentByRefParams_.clear();
+            for (const auto& param : method.params) {
+                if (param.isByRef) currentByRefParams_.insert(param.name);
+            }
+            // Return type
+            std::string retType = method.isFunction ? cBaseType(method.returnType) : "void";
+            // Function signature: rettype pc_ClassName_MethodName(StructType* pc_THIS, params...)
+            std::string funcName = "pc_" + cls.name + "_" + method.name;
+            out_ << retType << " " << funcName << "(" << structType << "* pc_THIS";
+            for (const auto& param : method.params) {
+                out_ << ", " << cBaseType(param.type);
+                if (param.isByRef) out_ << "*";
+                out_ << " " << cName(param.name);
+            }
+            out_ << ") {\n";
+            emitIndented(method.body);
+            out_ << "}\n\n";
+            currentByRefParams_.clear();
+        }
+
+        // Emit factory function: StructType pc_new_ClassName(ctor_params...)
+        {
+            out_ << structType << " pc_new_" << cls.name << "(";
+            if (ctorMethod && !ctorMethod->params.empty()) {
+                for (size_t i = 0; i < ctorMethod->params.size(); ++i) {
+                    if (i > 0) out_ << ", ";
+                    out_ << cBaseType(ctorMethod->params[i].type) << " " << cName(ctorMethod->params[i].name);
+                }
+            } else {
+                out_ << "void";
+            }
+            out_ << ") {\n";
+            out_ << "    " << structType << " pc__obj = {0};\n";
+            if (ctorMethod) {
+                out_ << "    pc_" << cls.name << "_NEW(&pc__obj";
+                for (const auto& param : ctorMethod->params) {
+                    out_ << ", " << cName(param.name);
+                }
+                out_ << ");\n";
+            }
+            out_ << "    return pc__obj;\n";
+            out_ << "}\n\n";
+        }
+
+        currentClassName_.clear();
+    }
+    insideFunction_ = false;
+}
+
 std::string CodeGen::generate(const Block& program) {
     emitRuntimeHeaders();
     emitRecordDefinitions();
+    emitClassDefinitions();
     emitFunctionPrototypes();
     emitFunctionDefinitions(program);
+    emitClassMethods(program);
 
     // Global arrays are emitted at file scope
     bool hasArrays = false;
@@ -419,7 +536,8 @@ std::string CodeGen::generate(const Block& program) {
 
 void CodeGen::emitBlock(const Block& block) {
     for (const auto& s : block) {
-        if (s->kind != Stmt::Kind::ProcedureDecl && s->kind != Stmt::Kind::FunctionDecl && s->kind != Stmt::Kind::TypeDecl) {
+        if (s->kind != Stmt::Kind::ProcedureDecl && s->kind != Stmt::Kind::FunctionDecl &&
+            s->kind != Stmt::Kind::TypeDecl && s->kind != Stmt::Kind::ClassDecl) {
             emitStmt(*s);
         }
     }
@@ -487,6 +605,7 @@ void CodeGen::emitStmt(const Stmt& s) {
         case Stmt::Kind::TypeDecl:
         case Stmt::Kind::ProcedureDecl:
         case Stmt::Kind::FunctionDecl:
+        case Stmt::Kind::ClassDecl:
             break;
 
         case Stmt::Kind::Declare: {
@@ -521,6 +640,23 @@ void CodeGen::emitStmt(const Stmt& s) {
         case Stmt::Kind::Assign: {
             auto& a = static_cast<const AssignStmt&>(s);
             std::string lhs = cName(a.name);
+            if (!currentClassName_.empty()) {
+                bool isProp = false;
+                std::string cur = currentClassName_;
+                while (!cur.empty()) {
+                    auto cit = classTypes_.find(cur);
+                    if (cit == classTypes_.end()) break;
+                    for (const auto& p : cit->second.properties) {
+                        if (p.name == a.name) { isProp = true; break; }
+                    }
+                    if (isProp) break;
+                    cur = cit->second.superClass;
+                }
+                if (isProp && currentByRefParams_.find(a.name) == currentByRefParams_.end() &&
+                    varMap_.find(a.name) == varMap_.end()) {
+                    lhs = "pc_THIS->" + cName(a.name);
+                }
+            }
             if (currentByRefParams_.find(a.name) != currentByRefParams_.end()) {
                 lhs = "(*" + lhs + ")";
             }
@@ -548,18 +684,70 @@ void CodeGen::emitStmt(const Stmt& s) {
 
         case Stmt::Kind::Call: {
             auto& c = static_cast<const CallStmt&>(s);
-            std::string callStr = cName(c.name) + "(";
-            auto it = functions_.find(c.name);
-            for (size_t i = 0; i < c.args.size(); ++i) {
-                if (i > 0) callStr += ", ";
-                if (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef) {
-                    callStr += "&" + lvalueExpr(*c.args[i]);
-                } else {
-                    callStr += expr(*c.args[i]);
+            if (c.isSuper && !currentClassName_.empty()) {
+                auto cit = classTypes_.find(currentClassName_);
+                std::string superClass = (cit != classTypes_.end()) ? cit->second.superClass : "";
+                std::string cur = superClass;
+                std::string defClass;
+                while (!cur.empty()) {
+                    auto it = classTypes_.find(cur);
+                    if (it == classTypes_.end()) break;
+                    if (it->second.methods.find(c.name) != it->second.methods.end()) {
+                        defClass = cur;
+                        break;
+                    }
+                    cur = it->second.superClass;
                 }
+                if (defClass.empty()) defClass = superClass;
+                std::string callStr = "pc_" + defClass + "_" + c.name + "((struct pc_class_" + defClass + "*)pc_THIS";
+                for (auto& arg : c.args) callStr += ", " + expr(*arg);
+                callStr += ");";
+                line(callStr);
+            } else if (c.target) {
+                std::string objExpr = expr(*c.target);
+                std::string cls;
+                if (c.target->type.base == BaseType::Object) cls = c.target->type.recordName;
+                else if (c.target->kind == Expr::Kind::Var &&
+                    (static_cast<const VarExpr&>(*c.target).name == "THIS" || static_cast<const VarExpr&>(*c.target).name == "this")) {
+                    cls = currentClassName_;
+                }
+                std::string cur = cls;
+                std::string defClass;
+                while (!cur.empty()) {
+                    auto it = classTypes_.find(cur);
+                    if (it == classTypes_.end()) break;
+                    if (it->second.methods.find(c.name) != it->second.methods.end()) {
+                        defClass = cur;
+                        break;
+                    }
+                    cur = it->second.superClass;
+                }
+                if (defClass.empty()) defClass = cls;
+                std::string targetPtr;
+                if (c.target->kind == Expr::Kind::Var &&
+                    (static_cast<const VarExpr&>(*c.target).name == "THIS" || static_cast<const VarExpr&>(*c.target).name == "this")) {
+                    targetPtr = "pc_THIS";
+                } else {
+                    targetPtr = "&(" + objExpr + ")";
+                }
+                std::string callStr = "pc_" + defClass + "_" + c.name + "((struct pc_class_" + defClass + "*)" + targetPtr;
+                for (auto& arg : c.args) callStr += ", " + expr(*arg);
+                callStr += ");";
+                line(callStr);
+            } else {
+                std::string callStr = cName(c.name) + "(";
+                auto it = functions_.find(c.name);
+                for (size_t i = 0; i < c.args.size(); ++i) {
+                    if (i > 0) callStr += ", ";
+                    if (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef) {
+                        callStr += "&" + lvalueExpr(*c.args[i]);
+                    } else {
+                        callStr += expr(*c.args[i]);
+                    }
+                }
+                callStr += ");";
+                line(callStr);
             }
-            callStr += ");";
-            line(callStr);
             break;
         }
 
@@ -789,8 +977,28 @@ std::string CodeGen::expr(const Expr& e) {
         }
         case Expr::Kind::Var: {
             std::string name = static_cast<const VarExpr&>(e).name;
+            // Inside a class method, THIS maps to the THIS* pointer parameter
+            if ((name == "THIS" || name == "this") && !currentClassName_.empty()) {
+                return "(*pc_THIS)";
+            }
             if (currentByRefParams_.find(name) != currentByRefParams_.end()) {
                 return "(*" + cName(name) + ")";
+            }
+            if (!currentClassName_.empty() && varMap_.find(name) == varMap_.end()) {
+                bool isProp = false;
+                std::string cur = currentClassName_;
+                while (!cur.empty()) {
+                    auto cit = classTypes_.find(cur);
+                    if (cit == classTypes_.end()) break;
+                    for (const auto& p : cit->second.properties) {
+                        if (p.name == name) { isProp = true; break; }
+                    }
+                    if (isProp) break;
+                    cur = cit->second.superClass;
+                }
+                if (isProp) {
+                    return "pc_THIS->" + cName(name);
+                }
             }
             return cName(name);
         }
@@ -809,6 +1017,10 @@ std::string CodeGen::expr(const Expr& e) {
         }
         case Expr::Kind::MemberAccess: {
             auto& m = static_cast<const MemberAccessExpr&>(e);
+            // If target is an Object type, use -> syntax; otherwise use .
+            if (m.target->type.base == BaseType::Object) {
+                return expr(*m.target) + "." + cName(m.field);
+            }
             return lvalueExpr(*m.target) + "." + cName(m.field);
         }
         case Expr::Kind::Unary: {
@@ -821,6 +1033,56 @@ std::string CodeGen::expr(const Expr& e) {
             return call(static_cast<const CallExpr&>(e));
         case Expr::Kind::UserCall:
             return userCall(static_cast<const UserCallExpr&>(e));
+        case Expr::Kind::New: {
+            auto& n = static_cast<const NewExpr&>(e);
+            // Call the factory function that allocates the struct and calls the constructor
+            std::string funcName = "pc_new_" + n.className;
+            std::string s = funcName + "(";
+            for (size_t i = 0; i < n.args.size(); ++i) {
+                if (i > 0) s += ", ";
+                s += expr(*n.args[i]);
+            }
+            s += ")";
+            return s;
+        }
+        case Expr::Kind::MethodCall: {
+            auto& m = static_cast<const MethodCallExpr&>(e);
+            std::string cls;
+            std::string targetExpr;
+            if (m.isSuper) {
+                auto cit = classTypes_.find(currentClassName_);
+                cls = (cit != classTypes_.end()) ? cit->second.superClass : "";
+                targetExpr = "pc_THIS";
+            } else {
+                if (m.target->type.base == BaseType::Object) cls = m.target->type.recordName;
+                else if (m.target->kind == Expr::Kind::Var &&
+                    (static_cast<const VarExpr&>(*m.target).name == "THIS" || static_cast<const VarExpr&>(*m.target).name == "this")) {
+                    cls = currentClassName_;
+                }
+                if (m.target->kind == Expr::Kind::Var &&
+                    (static_cast<const VarExpr&>(*m.target).name == "THIS" || static_cast<const VarExpr&>(*m.target).name == "this")) {
+                    targetExpr = "pc_THIS";
+                } else {
+                    targetExpr = "&(" + expr(*m.target) + ")";
+                }
+            }
+            std::string cur = cls;
+            std::string defClass;
+            while (!cur.empty()) {
+                auto it = classTypes_.find(cur);
+                if (it == classTypes_.end()) break;
+                if (it->second.methods.find(m.method) != it->second.methods.end()) {
+                    defClass = cur;
+                    break;
+                }
+                cur = it->second.superClass;
+            }
+            if (defClass.empty()) defClass = cls;
+            std::string s = "pc_" + defClass + "_" + m.method + "((struct pc_class_" + defClass + "*)" + targetExpr;
+            for (auto& arg : m.args) s += ", " + expr(*arg);
+            s += ")";
+            return s;
+        }
     }
     return "";
 }

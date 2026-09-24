@@ -1,0 +1,45 @@
+CLASS BankAccount
+    PRIVATE balance : INTEGER
+
+    PUBLIC PROCEDURE NEW(initBal : INTEGER)
+        balance <- initBal
+    ENDPROCEDURE
+
+    PUBLIC PROCEDURE Deposit(amount : INTEGER)
+        balance <- balance + amount
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION GetBalance() RETURNS INTEGER
+        RETURN balance
+    ENDFUNCTION
+ENDCLASS
+
+CLASS SavingsAccount INHERITS BankAccount
+    PRIVATE interestRate : INTEGER
+
+    PUBLIC PROCEDURE NEW(initBal : INTEGER, rate : INTEGER)
+        CALL SUPER.NEW(initBal)
+        interestRate <- rate
+    ENDPROCEDURE
+
+    PUBLIC PROCEDURE AddInterest()
+        DECLARE earned : INTEGER
+        earned <- (THIS.GetBalance() * interestRate) DIV 100
+        CALL THIS.Deposit(earned)
+    ENDPROCEDURE
+
+    PUBLIC FUNCTION GetInterestRate() RETURNS INTEGER
+        RETURN interestRate
+    ENDFUNCTION
+ENDCLASS
+
+DECLARE acc : BankAccount
+acc <- NEW BankAccount(100)
+CALL acc.Deposit(50)
+OUTPUT "Account balance: ", acc.GetBalance()
+
+DECLARE sav : SavingsAccount
+sav <- NEW SavingsAccount(200, 10)
+CALL sav.AddInterest()
+OUTPUT "Savings balance: ", sav.GetBalance()
+OUTPUT "Interest rate: ", sav.GetInterestRate()

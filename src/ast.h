@@ -14,6 +14,7 @@ enum class BaseType {
     String,
     Char,
     Record,
+    Object,
     Void,
     Error
 };
@@ -28,7 +29,7 @@ struct TypeInfo {
 
     bool operator==(const TypeInfo& o) const {
         if (base != o.base || isArray != o.isArray || dims != o.dims) return false;
-        if (base == BaseType::Record && recordName != o.recordName) return false;
+        if ((base == BaseType::Record || base == BaseType::Object) && recordName != o.recordName) return false;
         if (!isArray) return true;
         if (dims == 1) return lower1 == o.lower1 && upper1 == o.upper1;
         return lower1 == o.lower1 && upper1 == o.upper1 && lower2 == o.lower2 && upper2 == o.upper2;
@@ -44,6 +45,7 @@ inline const char* baseTypeName(BaseType t) {
         case BaseType::String:  return "STRING";
         case BaseType::Char:    return "CHAR";
         case BaseType::Record:  return "RECORD";
+        case BaseType::Object:  return "OBJECT";
         case BaseType::Void:    return "VOID";
         default:                return "<error>";
     }
@@ -51,7 +53,7 @@ inline const char* baseTypeName(BaseType t) {
 
 inline std::string typeString(const TypeInfo& t) {
     std::string baseStr;
-    if (t.base == BaseType::Record) baseStr = t.recordName;
+    if (t.base == BaseType::Record || t.base == BaseType::Object) baseStr = t.recordName;
     else baseStr = baseTypeName(t.base);
 
     if (!t.isArray) return baseStr;
@@ -118,7 +120,8 @@ struct ParamDef {
 
 struct Expr {
     enum class Kind {
-        Literal, Var, ArrayAccess, MemberAccess, Unary, Binary, Call, UserCall
+        Literal, Var, ArrayAccess, MemberAccess, Unary, Binary, Call, UserCall,
+        New, MethodCall
     };
     Kind kind;
     int line, col;
@@ -178,13 +181,27 @@ struct UserCallExpr : Expr {
     UserCallExpr(int l, int c) : Expr(Kind::UserCall, l, c) {}
 };
 
+struct NewExpr : Expr {
+    std::string className;
+    std::vector<ExprPtr> args;
+    NewExpr(int l, int c) : Expr(Kind::New, l, c) {}
+};
+
+struct MethodCallExpr : Expr {
+    ExprPtr target; // null if SUPER
+    bool isSuper = false;
+    std::string method;
+    std::vector<ExprPtr> args;
+    MethodCallExpr(int l, int c) : Expr(Kind::MethodCall, l, c) {}
+};
+
 // AST Statements
 
 struct Stmt {
     enum class Kind {
         Declare, Constant, Assign, ArrayAssign, MemberAssign, Output, Input,
         If, While, Repeat, For, Case,
-        TypeDecl, ProcedureDecl, FunctionDecl, Call, Return,
+        TypeDecl, ClassDecl, ProcedureDecl, FunctionDecl, Call, Return,
         OpenFile, CloseFile, ReadFile, WriteFile
     };
     Kind kind;
@@ -286,6 +303,32 @@ struct TypeDeclStmt : Stmt {
     TypeDeclStmt(int l, int c) : Stmt(Kind::TypeDecl, l, c) {}
 };
 
+struct ClassProperty {
+    std::string name;
+    TypeInfo type;
+    bool isPrivate = false;
+    int line = 0, col = 0;
+};
+
+struct ClassMethod {
+    bool isFunction = false;
+    bool isPrivate = false;
+    bool isConstructor = false;
+    std::string name;
+    std::vector<ParamDef> params;
+    TypeInfo returnType{BaseType::Void, "", false, 0, 0, 0, 0, 0};
+    Block body;
+    int line = 0, col = 0;
+};
+
+struct ClassDeclStmt : Stmt {
+    std::string name;
+    std::string superClass;
+    std::vector<ClassProperty> properties;
+    std::vector<std::unique_ptr<ClassMethod>> methods;
+    ClassDeclStmt(int l, int c) : Stmt(Kind::ClassDecl, l, c) {}
+};
+
 struct ProcedureDeclStmt : Stmt {
     std::string name;
     std::vector<ParamDef> params;
@@ -302,6 +345,8 @@ struct FunctionDeclStmt : Stmt {
 };
 
 struct CallStmt : Stmt {
+    ExprPtr target; // null if standalone procedure call
+    bool isSuper = false;
     std::string name;
     std::vector<ExprPtr> args;
     CallStmt(int l, int c) : Stmt(Kind::Call, l, c) {}
