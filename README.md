@@ -54,8 +54,9 @@ make clean
 usage: pseudoc [<input>] [options]
 
 Options:
-  -o <output>           Output file (C source or Pseudocode depending on mode)
+  -o <output>           Output file (C source, Python, or Pseudocode depending on mode)
   -c, --emit-c          Compile pseudocode and emit C source code to stdout
+  -p, --emit-py         Compile pseudocode and emit Python 3 source code to stdout
   -r, --c-to-pseudo     Decompile/transpile C source code to Cambridge pseudocode
   -d, --dump-bc         Disassemble and inspect bytecode without executing
   -i, --repl            Run interactive REPL
@@ -81,7 +82,13 @@ gcc -O2 tour.c -o tour -lm
 ./tour
 ```
 
-**3. Reverse transpile C code to Cambridge Pseudocode:**
+**3. Transpile to Python 3:**
+```bash
+./pseudoc tour.pseudo -o tour.py
+python3 tour.py
+```
+
+**4. Reverse transpile C code to Cambridge Pseudocode:**
 ```bash
 ./pseudoc code.c -o code.pseudo
 ./pseudoc code.pseudo

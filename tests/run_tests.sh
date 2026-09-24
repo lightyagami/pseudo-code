@@ -34,7 +34,7 @@ run_test() {
         "$c_bin" > "$c_out"
     fi
 
-    # Differential assertion
+    # Differential assertion (VM == C)
     if diff -u "$vm_out" "$c_out" > "$TMP_DIR/${name}.diff"; then
         echo "  [PASS] $file (VM == C Backend)"
         PASSED=$((PASSED + 1))
@@ -45,7 +45,44 @@ run_test() {
     fi
 }
 
-echo "=== Running Pseudoc Differential Test Suite ==="
+run_py_test() {
+    local file="$1"
+    local stdin_input="$2"
+    local name=$(basename "$file")
+
+    local vm_out="$TMP_DIR/${name}.vm.out"
+    local py_src="$TMP_DIR/${name}.py"
+    local py_out="$TMP_DIR/${name}.py.out"
+
+    # Run on VM first if not already run
+    if [ ! -f "$vm_out" ]; then
+        if [ -n "$stdin_input" ]; then
+            echo -e "$stdin_input" | $PSEUDOC "$file" > "$vm_out"
+        else
+            $PSEUDOC "$file" > "$vm_out"
+        fi
+    fi
+
+    # Transpile to Python and run
+    $PSEUDOC "$file" -o "$py_src"
+    if [ -n "$stdin_input" ]; then
+        echo -e "$stdin_input" | python3 "$py_src" > "$py_out"
+    else
+        python3 "$py_src" > "$py_out"
+    fi
+
+    # Differential assertion (VM == Python)
+    if diff -u "$vm_out" "$py_out" > "$TMP_DIR/${name}.py.diff"; then
+        echo "  [PASS] $file (VM == Python Transpiler)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [FAIL] $file: VM and Python outputs differ!"
+        cat "$TMP_DIR/${name}.py.diff"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+echo "=== Running Pseudoc Differential Test Suite (VM == C Backend) ==="
 
 run_test "tour.pseudo" ""
 run_test "fizzbuzz.pseudo" ""
@@ -59,6 +96,19 @@ run_test "tests/test_constants.pseudo" ""
 run_test "tests/test_builtins.pseudo" ""
 run_test "tests/test_oop.pseudo" ""
 run_test "tests/test_banking_oop.pseudo" ""
+
+if command -v python3 >/dev/null 2>&1; then
+    echo "=== Running Python 3 Transpiler Tests (VM == Python) ==="
+    run_py_test "tour.pseudo" ""
+    run_py_test "fizzbuzz.pseudo" ""
+    run_py_test "sum.pseudo" "10"
+    run_py_test "tests/test_case.pseudo" ""
+    run_py_test "tests/test_repeat.pseudo" ""
+    run_py_test "tests/test_constants.pseudo" ""
+    run_py_test "tests/test_builtins.pseudo" ""
+    run_py_test "tests/test_oop.pseudo" ""
+    run_py_test "tests/test_banking_oop.pseudo" ""
+fi
 
 run_c_to_pseudo_test() {
     local file="$1"
@@ -90,6 +140,7 @@ run_c_to_pseudo_test() {
     fi
 }
 
+echo "=== Running Reverse C-to-Pseudocode Tests ==="
 run_c_to_pseudo_test "tests/test_c_to_pseudo.c"
 
 echo "------------------------------------------------"

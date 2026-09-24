@@ -1,6 +1,7 @@
 #include "bytecode.h"
 #include "c_to_pseudo.h"
 #include "codegen.h"
+#include "py_codegen.h"
 #include "diagnostics.h"
 #include "lexer.h"
 #include "parser.h"
@@ -17,8 +18,9 @@
 static void usage() {
     std::cerr << "usage: pseudoc [<input>] [options]\n\n"
               << "Options:\n"
-              << "  -o <output>           Output file (C source or Pseudocode depending on mode)\n"
+              << "  -o <output>           Output file (C source, Python, or Pseudocode depending on mode)\n"
               << "  -c, --emit-c          Compile pseudocode and emit C source code to stdout\n"
+              << "  -p, --emit-py         Compile pseudocode and emit Python 3 source code\n"
               << "  -r, --c-to-pseudo     Decompile/transpile C source code to Cambridge pseudocode\n"
               << "  -d, --dump-bc         Disassemble and print bytecode without executing\n"
               << "  -i, --repl            Run interactive REPL (powered by VM)\n"
@@ -41,6 +43,7 @@ int main(int argc, char** argv) {
     std::string inPath, outPath;
     bool interactive = false;
     bool emitC = false;
+    bool emitPy = false;
     bool dumpBc = false;
     bool cToPseudo = false;
 
@@ -49,6 +52,7 @@ int main(int argc, char** argv) {
         if (arg == "-h" || arg == "--help") { usage(); return 0; }
         if (arg == "-i" || arg == "--repl") { interactive = true; }
         else if (arg == "-c" || arg == "--emit-c") { emitC = true; }
+        else if (arg == "-p" || arg == "--emit-py" || arg == "--emit-python") { emitPy = true; }
         else if (arg == "-r" || arg == "--reverse" || arg == "--c-to-pseudo") { cToPseudo = true; }
         else if (arg == "-d" || arg == "--dump-bc" || arg == "--dump-bytecode") { dumpBc = true; }
         else if (arg == "-o" && i + 1 < argc) { outPath = argv[++i]; }
@@ -56,7 +60,7 @@ int main(int argc, char** argv) {
         else { usage(); return 2; }
     }
 
-    if (interactive || (inPath.empty() && outPath.empty() && !emitC && !dumpBc && !cToPseudo)) {
+    if (interactive || (inPath.empty() && outPath.empty() && !emitC && !emitPy && !dumpBc && !cToPseudo)) {
         runRepl();
         return 0;
     }
@@ -103,6 +107,22 @@ int main(int argc, char** argv) {
         std::cerr << diag.errorCount() << (diag.errorCount() == 1 ? " error" : " errors")
                   << " found; no execution or output written.\n";
         return 1;
+    }
+
+    // Python Code Generation Mode (-o <file.py> or -p / --emit-py)
+    if (emitPy || (!outPath.empty() && outPath.size() >= 3 && outPath.substr(outPath.size() - 3) == ".py")) {
+        std::string py = PyCodeGen(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).generate(program);
+        if (outPath.empty()) {
+            std::cout << py;
+        } else {
+            std::ofstream out(outPath);
+            if (!out) {
+                std::cerr << "pseudoc: cannot write '" << outPath << "'\n";
+                return 2;
+            }
+            out << py;
+        }
+        return 0;
     }
 
     // C Code Generation Mode (-o <file.c> or -c / --emit-c)
