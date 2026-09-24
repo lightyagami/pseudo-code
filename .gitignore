@@ -1,0 +1,39 @@
+# Compiler and test executables
+pseudoc
+sum
+tour
+fizzbuzz
+
+# Build artifacts & object files
+*.o
+*.obj
+*.out
+*.exe
+*.app
+*.dSYM/
+build/
+bin/
+out/
+dist/
+
+# Generated files
+generated/
+
+# Libraries
+*.a
+*.so
+*.dylib
+*.dll
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+compile_commands.json
+.DS_Store
+
+# Core dumps
+core
+core.*
