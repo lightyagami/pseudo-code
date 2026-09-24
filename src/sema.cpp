@@ -31,7 +31,10 @@ bool Sema::assignable(const TypeInfo& to, const TypeInfo& from) {
         if (to.base == BaseType::Record) return to.recordName == from.recordName;
         return true;
     }
-    return to.base == BaseType::Real && from.base == BaseType::Integer;
+    if (to.base == BaseType::Real && from.base == BaseType::Integer) return true;
+    if (to.base == BaseType::String && from.base == BaseType::Char) return true;
+    if (to.base == BaseType::Char && from.base == BaseType::String) return true;
+    return false;
 }
 
 const FieldDef* Sema::lookupField(const std::string& recordName, const std::string& fieldName) {
@@ -97,7 +100,7 @@ void Sema::checkStmt(Stmt& s) {
 
             for (size_t i = 0; i < p.params.size(); ++i) {
                 const auto& param = p.params[i];
-                localSymbols_[param.name] = Symbol{param.type, param.line, param.isByRef, static_cast<int>(i)};
+                localSymbols_[param.name] = Symbol{param.type, param.line, param.isByRef, false, static_cast<int>(i)};
                 localOrder_.emplace_back(param.name, param.type);
             }
 
@@ -133,7 +136,7 @@ void Sema::checkStmt(Stmt& s) {
 
             for (size_t i = 0; i < f.params.size(); ++i) {
                 const auto& param = f.params[i];
-                localSymbols_[param.name] = Symbol{param.type, param.line, param.isByRef, static_cast<int>(i)};
+                localSymbols_[param.name] = Symbol{param.type, param.line, param.isByRef, false, static_cast<int>(i)};
                 localOrder_.emplace_back(param.name, param.type);
             }
 
@@ -172,6 +175,12 @@ void Sema::checkStmt(Stmt& s) {
                         c.args[i]->kind != Expr::Kind::MemberAccess) {
                         err(c.args[i]->line, c.args[i]->col, "BYREF parameter '" + param.name +
                             "' requires an lvalue (variable, array element, or record field)");
+                    } else if (c.args[i]->kind == Expr::Kind::Var) {
+                        auto& v = static_cast<VarExpr&>(*c.args[i]);
+                        Symbol* sym = lookup(v.name);
+                        if (sym && sym->isConstant) {
+                            err(c.args[i]->line, c.args[i]->col, "cannot pass constant '" + v.name + "' by reference");
+                        }
                     }
                     if (argType != param.type) {
                         err(c.args[i]->line, c.args[i]->col, "BYREF argument type mismatch: expected " +
@@ -228,11 +237,38 @@ void Sema::checkStmt(Stmt& s) {
                 }
                 if (insideFunction_ || insideProcedure_) {
                     int slot = static_cast<int>(localOrder_.size());
-                    localSymbols_[d.name] = Symbol{d.declaredType, d.line, false, slot};
+                    localSymbols_[d.name] = Symbol{d.declaredType, d.line, false, false, slot};
                     localOrder_.emplace_back(d.name, d.declaredType);
                 } else {
-                    symbols_[d.name] = Symbol{d.declaredType, d.line, false, -1};
+                    symbols_[d.name] = Symbol{d.declaredType, d.line, false, false, -1};
                     order_.emplace_back(d.name, d.declaredType);
+                }
+            }
+            break;
+        }
+
+        case Stmt::Kind::Constant: {
+            auto& c = static_cast<ConstantStmt&>(s);
+            if (Symbol* prev = lookup(c.name)) {
+                err(c.line, c.col, "'" + c.name + "' is already declared (line " +
+                    std::to_string(prev->line) + ")");
+            } else {
+                TypeInfo valType = typeOf(*c.value);
+                TypeInfo constType = valType;
+                if (c.explicitType.base != BaseType::Error) {
+                    if (!assignable(c.explicitType, valType)) {
+                        err(c.line, c.col, "cannot initialize constant of type " +
+                            typeString(c.explicitType) + " with value of type " + typeString(valType));
+                    }
+                    constType = c.explicitType;
+                }
+                if (insideFunction_ || insideProcedure_) {
+                    int slot = static_cast<int>(localOrder_.size());
+                    localSymbols_[c.name] = Symbol{constType, c.line, false, true, slot};
+                    localOrder_.emplace_back(c.name, constType);
+                } else {
+                    symbols_[c.name] = Symbol{constType, c.line, false, true, -1};
+                    order_.emplace_back(c.name, constType);
                 }
             }
             break;
@@ -242,6 +278,9 @@ void Sema::checkStmt(Stmt& s) {
             auto& a = static_cast<AssignStmt&>(s);
             Symbol* sym = lookup(a.name);
             if (!sym) err(a.line, a.col, "'" + a.name + "' is not declared");
+            if (sym && sym->isConstant) {
+                err(a.line, a.col, "cannot assign to constant '" + a.name + "'");
+            }
             TypeInfo value = typeOf(*a.value);
             if (sym && sym->type.isArray) {
                 err(a.line, a.col, "cannot assign directly to array '" + a.name + "'; index required");
@@ -323,6 +362,8 @@ void Sema::checkStmt(Stmt& s) {
                 Symbol* sym = lookup(in.name);
                 if (!sym) {
                     err(in.line, in.col, "'" + in.name + "' is not declared");
+                } else if (sym->isConstant) {
+                    err(in.line, in.col, "cannot INPUT into constant '" + in.name + "'");
                 } else if (sym->type.isArray) {
                     if (in.indices.empty()) {
                         err(in.line, in.col, "cannot INPUT into whole array '" + in.name + "'");
@@ -364,11 +405,20 @@ void Sema::checkStmt(Stmt& s) {
             break;
         }
 
+        case Stmt::Kind::Repeat: {
+            auto& r = static_cast<RepeatStmt&>(s);
+            checkBlock(r.body);
+            requireType(*r.cond, typeOf(*r.cond), BaseType::Boolean, "UNTIL condition");
+            break;
+        }
+
         case Stmt::Kind::For: {
             auto& f = static_cast<ForStmt&>(s);
             Symbol* sym = lookup(f.var);
             if (!sym)
                 err(f.line, f.col, "'" + f.var + "' is not declared");
+            else if (sym->isConstant)
+                err(f.line, f.col, "FOR loop variable '" + f.var + "' cannot be a constant");
             else if (sym->type.isArray || sym->type.base != BaseType::Integer)
                 err(f.line, f.col, "FOR variable '" + f.var + "' must be INTEGER");
 
@@ -453,6 +503,7 @@ TypeInfo Sema::computeType(Expr& e) {
                 case Tok::IntLit:  return {BaseType::Integer, "", false, 0, 0, 0, 0, 0};
                 case Tok::RealLit: return {BaseType::Real, "", false, 0, 0, 0, 0, 0};
                 case Tok::StrLit:  return {BaseType::String, "", false, 0, 0, 0, 0, 0};
+                case Tok::CharLit: return {BaseType::Char, "", false, 0, 0, 0, 0, 0};
                 default:           return {BaseType::Boolean, "", false, 0, 0, 0, 0, 0};
             }
         }
@@ -554,6 +605,12 @@ TypeInfo Sema::computeUserCall(UserCallExpr& c) {
                 c.args[i]->kind != Expr::Kind::ArrayAccess &&
                 c.args[i]->kind != Expr::Kind::MemberAccess) {
                 err(c.args[i]->line, c.args[i]->col, "BYREF parameter requires an lvalue");
+            } else if (c.args[i]->kind == Expr::Kind::Var) {
+                auto& v = static_cast<VarExpr&>(*c.args[i]);
+                Symbol* sym = lookup(v.name);
+                if (sym && sym->isConstant) {
+                    err(c.args[i]->line, c.args[i]->col, "cannot pass constant '" + v.name + "' by reference");
+                }
             }
             if (argType != param.type) {
                 err(c.args[i]->line, c.args[i]->col, "BYREF argument type mismatch");
@@ -582,14 +639,25 @@ TypeInfo Sema::computeCall(CallExpr& c) {
     switch (c.func) {
         case Tok::Length:
             if (checkArgCount(1)) {
-                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "LENGTH argument");
+                TypeInfo t = typeOf(*c.args[0]);
+                if (t.base != BaseType::String && t.base != BaseType::Char) {
+                    requireType(*c.args[0], t, BaseType::String, "LENGTH argument");
+                }
             }
             return {BaseType::Integer, "", false, 0, 0, 0, 0, 0};
         case Tok::Substring:
+        case Tok::Mid:
             if (checkArgCount(3)) {
-                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "SUBSTRING argument 1");
-                requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "SUBSTRING argument 2 (start)");
-                requireType(*c.args[2], typeOf(*c.args[2]), BaseType::Integer, "SUBSTRING argument 3 (length)");
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "SUBSTRING/MID argument 1");
+                requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "SUBSTRING/MID argument 2 (start)");
+                requireType(*c.args[2], typeOf(*c.args[2]), BaseType::Integer, "SUBSTRING/MID argument 3 (length)");
+            }
+            return {BaseType::String, "", false, 0, 0, 0, 0, 0};
+        case Tok::Left:
+        case Tok::Right:
+            if (checkArgCount(2)) {
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "LEFT/RIGHT argument 1");
+                requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "LEFT/RIGHT argument 2 (length)");
             }
             return {BaseType::String, "", false, 0, 0, 0, 0, 0};
         case Tok::UCase:
@@ -609,6 +677,36 @@ TypeInfo Sema::computeCall(CallExpr& c) {
         case Tok::StrToNum:
             if (checkArgCount(1)) {
                 requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "STR_TO_NUM argument");
+            }
+            return {BaseType::Real, "", false, 0, 0, 0, 0, 0};
+        case Tok::Chr:
+            if (checkArgCount(1)) {
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::Integer, "CHR argument");
+            }
+            return {BaseType::Char, "", false, 0, 0, 0, 0, 0};
+        case Tok::Asc:
+            if (checkArgCount(1)) {
+                TypeInfo t = typeOf(*c.args[0]);
+                if (t.base != BaseType::String && t.base != BaseType::Char) {
+                    requireType(*c.args[0], t, BaseType::String, "ASC argument");
+                }
+            }
+            return {BaseType::Integer, "", false, 0, 0, 0, 0, 0};
+        case Tok::IntFunc:
+            if (checkArgCount(1)) {
+                TypeInfo t = typeOf(*c.args[0]);
+                if (!isNumeric(t)) {
+                    err(c.line, c.col, "INT requires a numeric argument, found " + typeString(t));
+                }
+            }
+            return {BaseType::Integer, "", false, 0, 0, 0, 0, 0};
+        case Tok::Round:
+            if (checkArgCount(2)) {
+                TypeInfo t = typeOf(*c.args[0]);
+                if (!isNumeric(t)) {
+                    err(c.line, c.col, "ROUND requires a numeric first argument, found " + typeString(t));
+                }
+                requireType(*c.args[1], typeOf(*c.args[1]), BaseType::Integer, "ROUND argument 2 (places)");
             }
             return {BaseType::Real, "", false, 0, 0, 0, 0, 0};
         case Tok::EofFunc:

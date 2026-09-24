@@ -34,12 +34,14 @@ private:
     StmtPtr parseStatementSafe();
     StmtPtr parseStatement();
     StmtPtr parseDeclare();
+    StmtPtr parseConstant();
     TypeInfo parseType();
     StmtPtr parseAssignOrMemberOrArray(const Token& name);
     StmtPtr parseOutput();
     StmtPtr parseInput();
     StmtPtr parseIf();
     StmtPtr parseWhile();
+    StmtPtr parseRepeat();
     StmtPtr parseFor();
     StmtPtr parseCase();
     StmtPtr parseTypeDecl();

@@ -1,0 +1,38 @@
+// Test REPEAT ... UNTIL loops
+DECLARE i : INTEGER
+DECLARE sum : INTEGER
+
+sum <- 0
+i <- 1
+REPEAT
+    sum <- sum + i
+    i <- i + 1
+UNTIL i > 5
+
+OUTPUT "Sum 1 to 5 = ", sum
+
+// Test condition already true on first entry (should execute once)
+DECLARE count : INTEGER
+count <- 0
+REPEAT
+    count <- count + 10
+UNTIL count >= 10
+
+OUTPUT "Once-through count = ", count
+
+// Test nested repeat loops
+DECLARE r : INTEGER
+DECLARE c : INTEGER
+DECLARE total : INTEGER
+total <- 0
+r <- 1
+REPEAT
+    c <- 1
+    REPEAT
+        total <- total + (r * c)
+        c <- c + 1
+    UNTIL c > 3
+    r <- r + 1
+UNTIL r > 2
+
+OUTPUT "Nested total = ", total

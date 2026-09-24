@@ -1,0 +1,27 @@
+// Test extended Cambridge built-in functions
+DECLARE msg : STRING
+msg <- "ComputerScience"
+
+OUTPUT "Original: ", msg
+OUTPUT "MID(msg, 9, 7): ", MID(msg, 9, 7)
+OUTPUT "SUBSTRING(msg, 1, 8): ", SUBSTRING(msg, 1, 8)
+OUTPUT "LEFT(msg, 8): ", LEFT(msg, 8)
+OUTPUT "RIGHT(msg, 7): ", RIGHT(msg, 7)
+
+// Character conversions
+DECLARE code : INTEGER
+DECLARE ch : STRING
+ch <- "A"
+code <- ASC(ch)
+OUTPUT "ASC('A') = ", code
+OUTPUT "CHR(65) = ", CHR(code)
+OUTPUT "CHR(66) = ", CHR(66)
+
+// Numeric built-ins
+DECLARE val : REAL
+val <- 14.857
+OUTPUT "INT(14.857) = ", INT(val)
+OUTPUT "INT(-3.2) = ", INT(-3.2)
+OUTPUT "ROUND(14.857, 2) = ", ROUND(val, 2)
+OUTPUT "ROUND(14.857, 0) = ", ROUND(val, 0)
+OUTPUT "ROUND(2.675, 1) = ", ROUND(2.675, 1)

@@ -27,11 +27,11 @@ void runRepl() {
         for (const auto& t : toks) {
             if (t.type == Tok::If || t.type == Tok::While || t.type == Tok::For ||
                 t.type == Tok::Case || t.type == Tok::Function || t.type == Tok::Procedure ||
-                t.type == Tok::Type) {
+                t.type == Tok::Type || t.type == Tok::Repeat) {
                 depth++;
             } else if (t.type == Tok::EndIf || t.type == Tok::EndWhile || t.type == Tok::Next ||
                        t.type == Tok::EndCase || t.type == Tok::EndFunction || t.type == Tok::EndProcedure ||
-                       t.type == Tok::EndType) {
+                       t.type == Tok::EndType || t.type == Tok::Until) {
                 depth = std::max(0, depth - 1);
             }
         }

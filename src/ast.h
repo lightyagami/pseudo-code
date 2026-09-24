@@ -12,6 +12,7 @@ enum class BaseType {
     Real,
     Boolean,
     String,
+    Char,
     Record,
     Void,
     Error
@@ -41,6 +42,7 @@ inline const char* baseTypeName(BaseType t) {
         case BaseType::Real:    return "REAL";
         case BaseType::Boolean: return "BOOLEAN";
         case BaseType::String:  return "STRING";
+        case BaseType::Char:    return "CHAR";
         case BaseType::Record:  return "RECORD";
         case BaseType::Void:    return "VOID";
         default:                return "<error>";
@@ -180,8 +182,8 @@ struct UserCallExpr : Expr {
 
 struct Stmt {
     enum class Kind {
-        Declare, Assign, ArrayAssign, MemberAssign, Output, Input,
-        If, While, For, Case,
+        Declare, Constant, Assign, ArrayAssign, MemberAssign, Output, Input,
+        If, While, Repeat, For, Case,
         TypeDecl, ProcedureDecl, FunctionDecl, Call, Return,
         OpenFile, CloseFile, ReadFile, WriteFile
     };
@@ -199,6 +201,13 @@ struct DeclareStmt : Stmt {
     std::string name;
     TypeInfo declaredType;
     DeclareStmt(int l, int c) : Stmt(Kind::Declare, l, c) {}
+};
+
+struct ConstantStmt : Stmt {
+    std::string name;
+    ExprPtr value;
+    TypeInfo explicitType{BaseType::Error, "", false, 0, 0, 0, 0, 0};
+    ConstantStmt(int l, int c) : Stmt(Kind::Constant, l, c) {}
 };
 
 struct AssignStmt : Stmt {
@@ -244,6 +253,12 @@ struct WhileStmt : Stmt {
     ExprPtr cond;
     Block body;
     WhileStmt(int l, int c) : Stmt(Kind::While, l, c) {}
+};
+
+struct RepeatStmt : Stmt {
+    Block body;
+    ExprPtr cond;
+    RepeatStmt(int l, int c) : Stmt(Kind::Repeat, l, c) {}
 };
 
 struct ForStmt : Stmt {

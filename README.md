@@ -9,12 +9,13 @@ It can either execute pseudocode scripts directly on a stack-based virtual machi
   - Native code emission by transpiling to C99 (`gcc`/`clang` compatible).
   - Interactive REPL with expression evaluation and multiline block auto-continuation.
 - **Language Support**:
-  - **Primitive Types**: `INTEGER`, `REAL`, `BOOLEAN`, `STRING`.
+  - **Primitive Types**: `INTEGER`, `REAL`, `BOOLEAN`, `STRING`, `CHAR` (single quotes `'a'`).
+  - **Constants**: `CONSTANT <identifier> = <literal>` with compile-time immutability enforcement.
   - **Composite Types**: 1D and 2D `ARRAY` with arbitrary lower/upper bounds, and user-defined `TYPE ... ENDTYPE` records.
   - **Subroutines**: `PROCEDURE` and `FUNCTION`, recursion, return values, and explicit parameter passing (`BYVAL` default, `BYREF` mutable references).
-  - **Control Flow**: `IF ... THEN ... ELSE ... ENDIF`, `WHILE ... DO ... ENDWHILE`, `FOR ... TO ... STEP ... NEXT`, and `CASE OF ... OTHERWISE ... ENDCASE`.
+  - **Control Flow**: `IF ... THEN ... ELSE ... ENDIF`, `WHILE ... DO ... ENDWHILE`, `REPEAT ... UNTIL <condition>`, `FOR ... TO ... STEP ... NEXT`, and `CASE OF ... OTHERWISE ... ENDCASE`.
   - **File I/O**: `OPENFILE ... FOR READ|WRITE|APPEND`, `READFILE`, `WRITEFILE`, `CLOSEFILE`, and `EOF(...)`.
-  - **Built-in Functions**: `LENGTH`, `SUBSTRING`, `UCASE`, `LCASE`, `NUM_TO_STR`, `STR_TO_NUM`, string concatenation (`&`), and integer arithmetic operators (`DIV`, `MOD`).
+  - **Built-in Functions**: `LENGTH`, `SUBSTRING` / `MID`, `LEFT`, `RIGHT`, `UCASE`, `LCASE`, `CHR`, `ASC`, `INT`, `ROUND`, `NUM_TO_STR`, `STR_TO_NUM`, string concatenation (`&`), and integer arithmetic operators (`DIV`, `MOD`).
   - **Safety**: 64-bit integer overflow checks, runtime array bounds checking, and file handle tracking.
 
 ## Building

@@ -5,15 +5,16 @@
 #include <unordered_map>
 
 enum class Tok {
-    IntLit, RealLit, StrLit, Ident,
+    IntLit, RealLit, StrLit, CharLit, Ident,
     // Keywords - Types & Declarations
-    Declare, Integer, Real, Boolean, String, Array, Of,
+    Declare, Constant, Integer, Real, Boolean, String, Char, Array, Of,
     Type, EndType,
     // Procedures & Functions
     Procedure, EndProcedure, Function, EndFunction, Returns, Return, Call, ByVal, ByRef,
     // Control Flow
     If, Then, Else, EndIf,
     While, Do, EndWhile,
+    Repeat, Until,
     For, To, Step, Next,
     Case, Otherwise, EndCase,
     // I/O & Files
@@ -22,7 +23,8 @@ enum class Tok {
     // Logic & Math Operators
     And, Or, Not, Div, Mod, True, False,
     // Built-in functions
-    Length, Substring, UCase, LCase, NumToStr, StrToNum, EofFunc,
+    Length, Substring, Mid, Left, Right, UCase, LCase, NumToStr, StrToNum,
+    Chr, Asc, IntFunc, Round, EofFunc,
     // Symbols
     Arrow, Colon, Comma, Dot, LParen, RParen, LBracket, RBracket,
     Plus, Minus, Star, Slash, Ampersand,
@@ -38,8 +40,9 @@ struct Token {
 };
 
 static const std::unordered_map<std::string, Tok> kKeywords = {
-    {"DECLARE", Tok::Declare}, {"INTEGER", Tok::Integer}, {"REAL", Tok::Real},
-    {"BOOLEAN", Tok::Boolean}, {"STRING", Tok::String},
+    {"DECLARE", Tok::Declare}, {"CONSTANT", Tok::Constant},
+    {"INTEGER", Tok::Integer}, {"REAL", Tok::Real},
+    {"BOOLEAN", Tok::Boolean}, {"STRING", Tok::String}, {"CHAR", Tok::Char},
     {"ARRAY", Tok::Array}, {"OF", Tok::Of},
     {"TYPE", Tok::Type}, {"ENDTYPE", Tok::EndType},
     {"PROCEDURE", Tok::Procedure}, {"ENDPROCEDURE", Tok::EndProcedure},
@@ -48,6 +51,7 @@ static const std::unordered_map<std::string, Tok> kKeywords = {
     {"BYVAL", Tok::ByVal}, {"BYREF", Tok::ByRef},
     {"IF", Tok::If}, {"THEN", Tok::Then}, {"ELSE", Tok::Else}, {"ENDIF", Tok::EndIf},
     {"WHILE", Tok::While}, {"DO", Tok::Do}, {"ENDWHILE", Tok::EndWhile},
+    {"REPEAT", Tok::Repeat}, {"UNTIL", Tok::Until},
     {"FOR", Tok::For}, {"TO", Tok::To}, {"STEP", Tok::Step}, {"NEXT", Tok::Next},
     {"CASE", Tok::Case}, {"OTHERWISE", Tok::Otherwise}, {"ENDCASE", Tok::EndCase},
     {"OUTPUT", Tok::Output}, {"INPUT", Tok::Input},
@@ -61,8 +65,11 @@ static const std::unordered_map<std::string, Tok> kKeywords = {
 
 static const std::unordered_map<std::string, Tok> kBuiltinFunctions = {
     {"LENGTH", Tok::Length}, {"SUBSTRING", Tok::Substring},
+    {"MID", Tok::Mid}, {"LEFT", Tok::Left}, {"RIGHT", Tok::Right},
     {"UCASE", Tok::UCase}, {"LCASE", Tok::LCase},
     {"NUM_TO_STR", Tok::NumToStr}, {"STR_TO_NUM", Tok::StrToNum},
+    {"CHR", Tok::Chr}, {"ASC", Tok::Asc},
+    {"INT", Tok::IntFunc}, {"ROUND", Tok::Round},
     {"EOF", Tok::EofFunc}
 };
 

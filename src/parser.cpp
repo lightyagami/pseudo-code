@@ -83,10 +83,12 @@ StmtPtr Parser::parseStatement() {
     const Token& t = peek();
     switch (t.type) {
         case Tok::Declare:     advance(); return parseDeclare();
+        case Tok::Constant:    advance(); return parseConstant();
         case Tok::Output:      advance(); return parseOutput();
         case Tok::Input:       advance(); return parseInput();
         case Tok::If:          advance(); return parseIf();
         case Tok::While:       advance(); return parseWhile();
+        case Tok::Repeat:      advance(); return parseRepeat();
         case Tok::For:         advance(); return parseFor();
         case Tok::Case:        advance(); return parseCase();
         case Tok::Type:        advance(); return parseTypeDecl();
@@ -119,12 +121,29 @@ StmtPtr Parser::parseDeclare() {
     return s;
 }
 
+StmtPtr Parser::parseConstant() {
+    const Token& name = expect(Tok::Ident, "constant name");
+    TypeInfo type{BaseType::Error, "", false, 0, 0, 0, 0, 0};
+    if (match(Tok::Colon)) {
+        type = parseType();
+    }
+    expect(Tok::Eq, "'='");
+    ExprPtr val = parseExpr();
+    expect(Tok::Newline, "end of line");
+    auto s = std::make_unique<ConstantStmt>(name.line, name.col);
+    s->name = name.lexeme;
+    s->value = std::move(val);
+    s->explicitType = type;
+    return s;
+}
+
 TypeInfo Parser::parseType() {
     const Token& t = peek();
     if (match(Tok::Integer)) return TypeInfo{BaseType::Integer, "", false, 0, 0, 0, 0, 0};
     if (match(Tok::Real))    return TypeInfo{BaseType::Real, "", false, 0, 0, 0, 0, 0};
     if (match(Tok::Boolean)) return TypeInfo{BaseType::Boolean, "", false, 0, 0, 0, 0, 0};
     if (match(Tok::String))  return TypeInfo{BaseType::String, "", false, 0, 0, 0, 0, 0};
+    if (match(Tok::Char))    return TypeInfo{BaseType::Char, "", false, 0, 0, 0, 0, 0};
 
     if (match(Tok::Array)) {
         expect(Tok::LBracket, "'['");
@@ -154,11 +173,12 @@ TypeInfo Parser::parseType() {
         else if (match(Tok::Real))    info.base = BaseType::Real;
         else if (match(Tok::Boolean)) info.base = BaseType::Boolean;
         else if (match(Tok::String))  info.base = BaseType::String;
+        else if (match(Tok::Char))    info.base = BaseType::Char;
         else if (match(Tok::Ident)) {
             info.base = BaseType::Record;
             info.recordName = elemTok.lexeme;
         } else {
-            fail(elemTok, "expected element type (INTEGER, REAL, BOOLEAN, STRING, or record type name)");
+            fail(elemTok, "expected element type (INTEGER, REAL, BOOLEAN, STRING, CHAR, or record type name)");
         }
 
         return info;
@@ -168,7 +188,7 @@ TypeInfo Parser::parseType() {
         return TypeInfo{BaseType::Record, t.lexeme, false, 0, 0, 0, 0, 0};
     }
 
-    fail(t, "expected a type (INTEGER, REAL, BOOLEAN, STRING, ARRAY, or record name)");
+    fail(t, "expected a type (INTEGER, REAL, BOOLEAN, STRING, CHAR, ARRAY, or record name)");
     return TypeInfo{BaseType::Error, "", false, 0, 0, 0, 0, 0};
 }
 
@@ -533,6 +553,22 @@ StmtPtr Parser::parseWhile() {
     return s;
 }
 
+StmtPtr Parser::parseRepeat() {
+    int line = previous().line, col = previous().col;
+    auto s = std::make_unique<RepeatStmt>(line, col);
+    expect(Tok::Newline, "end of line");
+    skipNewlines();
+
+    while (!check(Tok::Until) && !check(Tok::Eof)) {
+        if (StmtPtr st = parseStatementSafe()) s->body.push_back(std::move(st));
+        skipNewlines();
+    }
+    expect(Tok::Until, "'UNTIL'");
+    s->cond = parseExpr();
+    expect(Tok::Newline, "end of line");
+    return s;
+}
+
 StmtPtr Parser::parseFor() {
     int line = previous().line, col = previous().col;
     auto s = std::make_unique<ForStmt>(line, col);
@@ -696,6 +732,7 @@ ExprPtr Parser::parsePrimary() {
         }
         case Tok::RealLit:
         case Tok::StrLit:
+        case Tok::CharLit:
         case Tok::True:
         case Tok::False: {
             advance();
@@ -706,10 +743,17 @@ ExprPtr Parser::parsePrimary() {
         }
         case Tok::Length:
         case Tok::Substring:
+        case Tok::Mid:
+        case Tok::Left:
+        case Tok::Right:
         case Tok::UCase:
         case Tok::LCase:
         case Tok::NumToStr:
         case Tok::StrToNum:
+        case Tok::Chr:
+        case Tok::Asc:
+        case Tok::IntFunc:
+        case Tok::Round:
         case Tok::EofFunc:
             return parseBuiltInCall(t.type);
 

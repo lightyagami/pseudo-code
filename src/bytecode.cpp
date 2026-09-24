@@ -75,6 +75,12 @@ const char* opCodeName(OpCode op) {
         case OpCode::OpLCase:              return "OP_LCASE";
         case OpCode::OpNumToStr:           return "OP_NUM_TO_STR";
         case OpCode::OpStrToNum:           return "OP_STR_TO_NUM";
+        case OpCode::OpLeft:               return "OP_LEFT";
+        case OpCode::OpRight:              return "OP_RIGHT";
+        case OpCode::OpChr:                return "OP_CHR";
+        case OpCode::OpAsc:                return "OP_ASC";
+        case OpCode::OpInt:                return "OP_INT";
+        case OpCode::OpRound:              return "OP_ROUND";
         case OpCode::OpEqual:              return "OP_EQUAL";
         case OpCode::OpNotEqual:           return "OP_NOT_EQUAL";
         case OpCode::OpLess:               return "OP_LESS";
@@ -340,7 +346,8 @@ Chunk BytecodeCompiler::compile(const Block& program) {
                 case BaseType::Integer: defConst = addConstant(Value::makeInt(0)); break;
                 case BaseType::Real:    defConst = addConstant(Value::makeReal(0.0)); break;
                 case BaseType::Boolean: defConst = addConstant(Value::makeBool(false)); break;
-                case BaseType::String:  defConst = addConstant(Value::makeString("")); break;
+                case BaseType::String:
+                case BaseType::Char:    defConst = addConstant(Value::makeString("")); break;
                 default: break;
             }
             emit(OpCode::OpConstant, defConst, 0, 0, 0, f.line);
@@ -467,6 +474,24 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
             }
             break;
         }
+        case Stmt::Kind::Constant: {
+            auto& c = static_cast<const ConstantStmt&>(s);
+            TypeInfo cType = (c.explicitType.base != BaseType::Error) ? c.explicitType : c.value->type;
+            if (insideFunction_) {
+                int slot = static_cast<int>(localVars_.size());
+                localVars_.emplace_back(c.name, cType);
+                localSlotMap_[c.name] = slot;
+                localTypeMap_[c.name] = cType;
+                localIsByRef_[c.name] = false;
+            }
+            compileExpr(*c.value);
+            TypeInfo varType = getVarType(c.name);
+            if (varType.base == BaseType::Real && c.value->type.base == BaseType::Integer) {
+                emit(OpCode::OpWidenReal, 0, 0, 0, 0, c.line);
+            }
+            emit(OpCode::OpSetVar, getVarSlot(c.name), 0, 0, 0, c.line);
+            break;
+        }
         case Stmt::Kind::Assign: {
             auto& a = static_cast<const AssignStmt&>(s);
             compileExpr(*a.value);
@@ -525,7 +550,8 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
                 case BaseType::Integer: readOp = OpCode::OpReadInt; break;
                 case BaseType::Real:    readOp = OpCode::OpReadReal; break;
                 case BaseType::Boolean: readOp = OpCode::OpReadBool; break;
-                case BaseType::String:  readOp = OpCode::OpReadStr; break;
+                case BaseType::String:
+                case BaseType::Char:    readOp = OpCode::OpReadStr; break;
                 default: break;
             }
             emit(readOp, 0, 0, 0, 0, in.line);
@@ -580,6 +606,14 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
             compileBlock(w.body);
             emit(OpCode::OpJump, loopStart, 0, 0, 0, w.line);
             patchJump(exitJump);
+            break;
+        }
+        case Stmt::Kind::Repeat: {
+            auto& r = static_cast<const RepeatStmt&>(s);
+            int loopStart = static_cast<int>(chunk_.code.size());
+            compileBlock(r.body);
+            compileExpr(*r.cond);
+            emit(OpCode::OpJumpIfFalse, loopStart, 0, 0, 0, r.line);
             break;
         }
         case Stmt::Kind::For: {
@@ -706,6 +740,7 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
                     cIdx = addConstant(Value::makeReal(std::stod(lit.text)));
                     break;
                 case Tok::StrLit:
+                case Tok::CharLit:
                     cIdx = addConstant(Value::makeString(lit.text));
                     break;
                 case Tok::True:
@@ -803,11 +838,18 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
             }
             switch (c.func) {
                 case Tok::Length:    emit(OpCode::OpLength, 0, 0, 0, 0, c.line); break;
-                case Tok::Substring: emit(OpCode::OpSubstring, 0, 0, 0, 0, c.line); break;
+                case Tok::Substring:
+                case Tok::Mid:       emit(OpCode::OpSubstring, 0, 0, 0, 0, c.line); break;
+                case Tok::Left:      emit(OpCode::OpLeft, 0, 0, 0, 0, c.line); break;
+                case Tok::Right:     emit(OpCode::OpRight, 0, 0, 0, 0, c.line); break;
                 case Tok::UCase:     emit(OpCode::OpUCase, 0, 0, 0, 0, c.line); break;
                 case Tok::LCase:     emit(OpCode::OpLCase, 0, 0, 0, 0, c.line); break;
                 case Tok::NumToStr:  emit(OpCode::OpNumToStr, 0, 0, 0, 0, c.line); break;
                 case Tok::StrToNum:  emit(OpCode::OpStrToNum, 0, 0, 0, 0, c.line); break;
+                case Tok::Chr:       emit(OpCode::OpChr, 0, 0, 0, 0, c.line); break;
+                case Tok::Asc:       emit(OpCode::OpAsc, 0, 0, 0, 0, c.line); break;
+                case Tok::IntFunc:   emit(OpCode::OpInt, 0, 0, 0, 0, c.line); break;
+                case Tok::Round:     emit(OpCode::OpRound, 0, 0, 0, 0, c.line); break;
                 case Tok::EofFunc:   emit(OpCode::OpEof, 0, 0, 0, 0, c.line); break;
                 default: break;
             }

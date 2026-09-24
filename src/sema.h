@@ -15,6 +15,7 @@ public:
         TypeInfo type;
         int line;
         bool isByRef = false;
+        bool isConstant = false;
         int localSlot = -1; // -1 if global
     };
 

@@ -62,7 +62,8 @@ void CodeGen::emitRuntimeHeaders() {
          << "#include <stdbool.h>\n"
          << "#include <string.h>\n"
          << "#include <ctype.h>\n"
-         << "#include <strings.h>\n\n"
+         << "#include <strings.h>\n"
+         << "#include <math.h>\n\n"
          << "// --- Pseudoc Runtime Core & Dynamic Memory Tracker ---\n"
          << "typedef struct PC_Node { void* ptr; struct PC_Node* next; } PC_Node;\n"
          << "static PC_Node* pc_gc_head = NULL;\n"
@@ -254,7 +255,42 @@ void CodeGen::emitRuntimeHeaders() {
          << "    char buf[64]; snprintf(buf, sizeof(buf), \"%.10g\", d);\n"
          << "    return (char*)pc_track(strdup(buf));\n"
          << "}\n"
-         << "static double pc_str_to_num(const char* s) { return atof(s); }\n\n";
+         << "static double pc_str_to_num(const char* s) { return atof(s); }\n"
+         << "static char* pc_left(const char* s, long long len) {\n"
+         << "    if (len <= 0) return (char*)pc_track(strdup(\"\"));\n"
+         << "    long long slen = (long long)strlen(s);\n"
+         << "    if (len > slen) len = slen;\n"
+         << "    char* sub = (char*)malloc(len + 1);\n"
+         << "    memcpy(sub, s, len);\n"
+         << "    sub[len] = '\\0';\n"
+         << "    return (char*)pc_track(sub);\n"
+         << "}\n"
+         << "static char* pc_right(const char* s, long long len) {\n"
+         << "    if (len <= 0) return (char*)pc_track(strdup(\"\"));\n"
+         << "    long long slen = (long long)strlen(s);\n"
+         << "    if (len > slen) len = slen;\n"
+         << "    char* sub = (char*)malloc(len + 1);\n"
+         << "    memcpy(sub, s + (slen - len), len);\n"
+         << "    sub[len] = '\\0';\n"
+         << "    return (char*)pc_track(sub);\n"
+         << "}\n"
+         << "static char* pc_chr(long long code) {\n"
+         << "    char* res = (char*)malloc(2);\n"
+         << "    res[0] = (char)(code & 0xFF);\n"
+         << "    res[1] = '\\0';\n"
+         << "    return (char*)pc_track(res);\n"
+         << "}\n"
+         << "static long long pc_asc(const char* s) {\n"
+         << "    if (!s || s[0] == '\\0') return 0;\n"
+         << "    return (long long)(unsigned char)s[0];\n"
+         << "}\n"
+         << "static long long pc_int(double v) {\n"
+         << "    return (long long)floor(v);\n"
+         << "}\n"
+         << "static double pc_round(double v, long long places) {\n"
+         << "    double factor = pow(10.0, (double)places);\n"
+         << "    return round(v * factor) / factor;\n"
+         << "}\n\n";
 }
 
 void CodeGen::emitRecordDefinitions() {
@@ -465,6 +501,16 @@ void CodeGen::emitStmt(const Stmt& s) {
             break;
         }
 
+        case Stmt::Kind::Constant: {
+            auto& c = static_cast<const ConstantStmt&>(s);
+            if (insideFunction_) {
+                line(cBaseType(c.value->type) + " " + cName(c.name) + " = " + expr(*c.value) + ";");
+            } else {
+                line(cName(c.name) + " = " + expr(*c.value) + ";");
+            }
+            break;
+        }
+
         case Stmt::Kind::Assign: {
             auto& a = static_cast<const AssignStmt&>(s);
             std::string lhs = cName(a.name);
@@ -542,6 +588,14 @@ void CodeGen::emitStmt(const Stmt& s) {
             line("while (" + expr(*w.cond) + ") {");
             emitIndented(w.body);
             line("}");
+            break;
+        }
+
+        case Stmt::Kind::Repeat: {
+            auto& r = static_cast<const RepeatStmt&>(s);
+            line("do {");
+            emitIndented(r.body);
+            line("} while (!(" + expr(*r.cond) + "));");
             break;
         }
 
@@ -641,6 +695,7 @@ void CodeGen::emitOutput(const OutputStmt& o) {
                 args += ", (" + expr(*arg) + " ? \"TRUE\" : \"FALSE\")";
                 break;
             case BaseType::String:
+            case BaseType::Char:
                 fmt += "%s";
                 args += ", " + expr(*arg);
                 break;
@@ -674,6 +729,7 @@ void CodeGen::emitInput(const InputStmt& in) {
             line(target + " = pc_read_bool();");
             break;
         case BaseType::String:
+        case BaseType::Char:
             line(target + " = (char*)pc_track(strdup(pc_read_line()));");
             break;
         default:
@@ -718,6 +774,7 @@ std::string CodeGen::expr(const Expr& e) {
             switch (l.litType) {
                 case Tok::IntLit:  return l.text + "LL";
                 case Tok::RealLit: return l.text;
+                case Tok::CharLit:
                 case Tok::StrLit:  return escapeCStr(l.text);
                 case Tok::True:    return "true";
                 default:           return "false";
@@ -777,7 +834,12 @@ std::string CodeGen::call(const CallExpr& c) {
         case Tok::Length:
             return "((long long)strlen(" + expr(*c.args[0]) + "))";
         case Tok::Substring:
+        case Tok::Mid:
             return "pc_substring(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ", " + expr(*c.args[2]) + ")";
+        case Tok::Left:
+            return "pc_left(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+        case Tok::Right:
+            return "pc_right(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::UCase:
             return "pc_ucase(" + expr(*c.args[0]) + ")";
         case Tok::LCase:
@@ -788,6 +850,14 @@ std::string CodeGen::call(const CallExpr& c) {
             return "pc_num_to_str_real(" + expr(*c.args[0]) + ")";
         case Tok::StrToNum:
             return "pc_str_to_num(" + expr(*c.args[0]) + ")";
+        case Tok::Chr:
+            return "pc_chr(" + expr(*c.args[0]) + ")";
+        case Tok::Asc:
+            return "pc_asc(" + expr(*c.args[0]) + ")";
+        case Tok::IntFunc:
+            return "pc_int(" + expr(*c.args[0]) + ")";
+        case Tok::Round:
+            return "pc_round(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::EofFunc:
             return "pc_eof(" + expr(*c.args[0]) + ")";
         default:

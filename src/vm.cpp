@@ -1,6 +1,7 @@
 #include "vm.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -95,7 +96,8 @@ Value VM::defaultValue(const TypeInfo& t) {
         case BaseType::Integer: return Value::makeInt(0);
         case BaseType::Real:    return Value::makeReal(0.0);
         case BaseType::Boolean: return Value::makeBool(false);
-        case BaseType::String:  return Value::makeString("");
+        case BaseType::String:
+        case BaseType::Char:    return Value::makeString("");
         default:                return Value::makeInt(0);
     }
 }
@@ -729,6 +731,67 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                     long long val = std::strtoll(s.c_str(), &end, 10);
                     push(Value::makeInt(end == s.c_str() ? 0LL : val));
                 }
+                break;
+            }
+
+            case OpCode::OpLeft: {
+                Value lenVal = pop();
+                Value strVal = pop();
+                int64_t len = lenVal.asInt();
+                const std::string& s = strVal.asString();
+                if (len <= 0) {
+                    push(Value::makeString(""));
+                } else {
+                    size_t count = (static_cast<size_t>(len) > s.size()) ? s.size() : static_cast<size_t>(len);
+                    push(Value::makeString(s.substr(0, count)));
+                }
+                break;
+            }
+
+            case OpCode::OpRight: {
+                Value lenVal = pop();
+                Value strVal = pop();
+                int64_t len = lenVal.asInt();
+                const std::string& s = strVal.asString();
+                if (len <= 0) {
+                    push(Value::makeString(""));
+                } else {
+                    size_t count = (static_cast<size_t>(len) > s.size()) ? s.size() : static_cast<size_t>(len);
+                    push(Value::makeString(s.substr(s.size() - count, count)));
+                }
+                break;
+            }
+
+            case OpCode::OpChr: {
+                Value codeVal = pop();
+                int64_t code = codeVal.asInt();
+                char c = static_cast<char>(code & 0xFF);
+                push(Value::makeString(std::string(1, c)));
+                break;
+            }
+
+            case OpCode::OpAsc: {
+                Value strVal = pop();
+                const std::string& s = strVal.asString();
+                int64_t code = s.empty() ? 0 : static_cast<int64_t>(static_cast<unsigned char>(s[0]));
+                push(Value::makeInt(code));
+                break;
+            }
+
+            case OpCode::OpInt: {
+                Value v = pop();
+                double realVal = v.asReal();
+                push(Value::makeInt(static_cast<int64_t>(std::floor(realVal))));
+                break;
+            }
+
+            case OpCode::OpRound: {
+                Value placesVal = pop();
+                Value vVal = pop();
+                double v = vVal.asReal();
+                int64_t places = placesVal.asInt();
+                double factor = std::pow(10.0, static_cast<double>(places));
+                push(Value::makeReal(std::round(v * factor) / factor));
                 break;
             }
 

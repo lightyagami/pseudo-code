@@ -180,6 +180,12 @@ enum class OpCode : uint8_t {
     OpLCase,
     OpNumToStr,
     OpStrToNum,
+    OpLeft,
+    OpRight,
+    OpChr,
+    OpAsc,
+    OpInt,
+    OpRound,
 
     // Comparisons
     OpEqual,

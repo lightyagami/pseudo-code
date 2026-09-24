@@ -86,6 +86,9 @@ void Lexer::scanToken() {
         case '"':
             scanString(line, col);
             return;
+        case '\'':
+            scanChar(line, col);
+            return;
         default:
             // UTF-8 Left Arrow: ← (0xE2 0x86 0x90)
             if (static_cast<unsigned char>(c) == 0xE2 &&
@@ -162,3 +165,37 @@ void Lexer::scanString(int line, int col) {
     advance();
     add(Tok::StrLit, text, line, col);
 }
+
+void Lexer::scanChar(int line, int col) {
+    std::string text;
+    if (atEnd() || peek() == '\n' || peek() == '\'') {
+        diag_.error(line, col, "empty character literal");
+        if (!atEnd() && peek() == '\'') advance();
+        return;
+    }
+    if (peek() == '\\') {
+        advance();
+        if (atEnd() || peek() == '\n') {
+            diag_.error(line, col, "unterminated character literal");
+            return;
+        }
+        char esc = advance();
+        switch (esc) {
+            case 'n':  text += '\n'; break;
+            case 't':  text += '\t'; break;
+            case 'r':  text += '\r'; break;
+            case '\'': text += '\''; break;
+            case '\\': text += '\\'; break;
+            default:   text += esc;  break;
+        }
+    } else {
+        text += advance();
+    }
+    if (atEnd() || peek() != '\'') {
+        diag_.error(line, col, "unterminated character literal");
+        return;
+    }
+    advance();
+    add(Tok::CharLit, text, line, col);
+}
+

@@ -34,6 +34,7 @@ private:
     void scanNumber(char first, int line, int col);
     void scanIdent(char first, int line, int col);
     void scanString(int line, int col);
+    void scanChar(int line, int col);
 };
 
 #endif // PSEUDOC_LEXER_H
