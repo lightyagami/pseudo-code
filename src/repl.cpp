@@ -16,7 +16,7 @@ void runRepl() {
     std::cout << "Pseudoc REPL v3.0 (VM-powered, type ':q' or 'EXIT' to quit)\n";
     std::unordered_map<std::string, Sema::Symbol> replSymbols;
     std::vector<std::pair<std::string, TypeInfo>> replVars;
-    VM vm({});
+    VM vm({}, {});
 
     std::string accumulated;
     int blockDepth = 0;
@@ -25,8 +25,15 @@ void runRepl() {
         Diagnostics diag("<check>", line, true);
         std::vector<Token> toks = Lexer(line, diag).tokenize();
         for (const auto& t : toks) {
-            if (t.type == Tok::If || t.type == Tok::While || t.type == Tok::For) depth++;
-            else if (t.type == Tok::EndIf || t.type == Tok::EndWhile || t.type == Tok::Next) depth = std::max(0, depth - 1);
+            if (t.type == Tok::If || t.type == Tok::While || t.type == Tok::For ||
+                t.type == Tok::Case || t.type == Tok::Function || t.type == Tok::Procedure ||
+                t.type == Tok::Type) {
+                depth++;
+            } else if (t.type == Tok::EndIf || t.type == Tok::EndWhile || t.type == Tok::Next ||
+                       t.type == Tok::EndCase || t.type == Tok::EndFunction || t.type == Tok::EndProcedure ||
+                       t.type == Tok::EndType) {
+                depth = std::max(0, depth - 1);
+            }
         }
         return depth;
     };
@@ -77,9 +84,10 @@ void runRepl() {
         replSymbols = trialSema.symbols();
         replVars = trialSema.variables();
         vm.syncGlobals(replVars);
+        vm.setRecordTypes(trialSema.recordTypes());
 
         // Compile statement(s) to bytecode and run on VM
-        Chunk chunk = BytecodeCompiler(replVars).compile(trialProg);
+        Chunk chunk = BytecodeCompiler(replVars, trialSema.recordTypes(), trialSema.functions()).compile(trialProg);
         vm.run(chunk, true);
     }
 }

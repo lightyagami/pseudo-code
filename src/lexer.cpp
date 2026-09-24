@@ -59,6 +59,7 @@ void Lexer::scanToken() {
         case '[': add(Tok::LBracket, "[", line, col); return;
         case ']': add(Tok::RBracket, "]", line, col); return;
         case ',': add(Tok::Comma, ",", line, col); return;
+        case '.': add(Tok::Dot, ".", line, col); return;
         case ':': add(Tok::Colon, ":", line, col); return;
         case '&': add(Tok::Ampersand, "&", line, col); return;
         case '+': add(Tok::Plus, "+", line, col); return;

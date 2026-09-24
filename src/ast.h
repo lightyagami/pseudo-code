@@ -12,11 +12,14 @@ enum class BaseType {
     Real,
     Boolean,
     String,
+    Record,
+    Void,
     Error
 };
 
 struct TypeInfo {
     BaseType base = BaseType::Integer;
+    std::string recordName;
     bool isArray = false;
     int dims = 0;
     long long lower1 = 0, upper1 = 0;
@@ -24,6 +27,7 @@ struct TypeInfo {
 
     bool operator==(const TypeInfo& o) const {
         if (base != o.base || isArray != o.isArray || dims != o.dims) return false;
+        if (base == BaseType::Record && recordName != o.recordName) return false;
         if (!isArray) return true;
         if (dims == 1) return lower1 == o.lower1 && upper1 == o.upper1;
         return lower1 == o.lower1 && upper1 == o.upper1 && lower2 == o.lower2 && upper2 == o.upper2;
@@ -37,16 +41,22 @@ inline const char* baseTypeName(BaseType t) {
         case BaseType::Real:    return "REAL";
         case BaseType::Boolean: return "BOOLEAN";
         case BaseType::String:  return "STRING";
+        case BaseType::Record:  return "RECORD";
+        case BaseType::Void:    return "VOID";
         default:                return "<error>";
     }
 }
 
 inline std::string typeString(const TypeInfo& t) {
-    if (!t.isArray) return baseTypeName(t.base);
+    std::string baseStr;
+    if (t.base == BaseType::Record) baseStr = t.recordName;
+    else baseStr = baseTypeName(t.base);
+
+    if (!t.isArray) return baseStr;
     std::string s = "ARRAY[";
     s += std::to_string(t.lower1) + ":" + std::to_string(t.upper1);
     if (t.dims == 2) s += ", " + std::to_string(t.lower2) + ":" + std::to_string(t.upper2);
-    s += "] OF " + std::string(baseTypeName(t.base));
+    s += "] OF " + baseStr;
     return s;
 }
 
@@ -81,13 +91,36 @@ inline std::string opName(Tok op) {
     }
 }
 
+// User-Defined Types (Records)
+struct FieldDef {
+    std::string name;
+    TypeInfo type;
+    int line = 0, col = 0;
+};
+
+struct RecordDef {
+    std::string name;
+    std::vector<FieldDef> fields;
+    int line = 0, col = 0;
+};
+
+// Procedure / Function Parameter
+struct ParamDef {
+    std::string name;
+    TypeInfo type;
+    bool isByRef = false;
+    int line = 0, col = 0;
+};
+
 // AST Expressions
 
 struct Expr {
-    enum class Kind { Literal, Var, ArrayAccess, Unary, Binary, Call };
+    enum class Kind {
+        Literal, Var, ArrayAccess, MemberAccess, Unary, Binary, Call, UserCall
+    };
     Kind kind;
     int line, col;
-    TypeInfo type{BaseType::Error, false, 0, 0, 0, 0, 0};
+    TypeInfo type{BaseType::Error, "", false, 0, 0, 0, 0, 0};
 
     Expr(Kind k, int l, int c) : kind(k), line(l), col(c) {}
     virtual ~Expr() = default;
@@ -108,8 +141,15 @@ struct VarExpr : Expr {
 
 struct ArrayAccessExpr : Expr {
     std::string name;
+    ExprPtr target; // If non-null, accesses target[indices...]
     std::vector<ExprPtr> indices;
     ArrayAccessExpr(int l, int c) : Expr(Kind::ArrayAccess, l, c) {}
+};
+
+struct MemberAccessExpr : Expr {
+    ExprPtr target;
+    std::string field;
+    MemberAccessExpr(int l, int c) : Expr(Kind::MemberAccess, l, c) {}
 };
 
 struct UnaryExpr : Expr {
@@ -130,10 +170,21 @@ struct CallExpr : Expr {
     CallExpr(int l, int c) : Expr(Kind::Call, l, c) {}
 };
 
+struct UserCallExpr : Expr {
+    std::string callee;
+    std::vector<ExprPtr> args;
+    UserCallExpr(int l, int c) : Expr(Kind::UserCall, l, c) {}
+};
+
 // AST Statements
 
 struct Stmt {
-    enum class Kind { Declare, Assign, ArrayAssign, Output, Input, If, While, For };
+    enum class Kind {
+        Declare, Assign, ArrayAssign, MemberAssign, Output, Input,
+        If, While, For, Case,
+        TypeDecl, ProcedureDecl, FunctionDecl, Call, Return,
+        OpenFile, CloseFile, ReadFile, WriteFile
+    };
     Kind kind;
     int line, col;
 
@@ -158,9 +209,17 @@ struct AssignStmt : Stmt {
 
 struct ArrayAssignStmt : Stmt {
     std::string name;
+    ExprPtr target; // If non-null, target[indices...] = value
     std::vector<ExprPtr> indices;
     ExprPtr value;
     ArrayAssignStmt(int l, int c) : Stmt(Kind::ArrayAssign, l, c) {}
+};
+
+struct MemberAssignStmt : Stmt {
+    ExprPtr target; // e.g. VarExpr or ArrayAccessExpr
+    std::string field;
+    ExprPtr value;
+    MemberAssignStmt(int l, int c) : Stmt(Kind::MemberAssign, l, c) {}
 };
 
 struct OutputStmt : Stmt {
@@ -170,6 +229,7 @@ struct OutputStmt : Stmt {
 
 struct InputStmt : Stmt {
     std::string name;
+    ExprPtr target; // If non-null, input into target
     std::vector<ExprPtr> indices;
     InputStmt(int l, int c) : Stmt(Kind::Input, l, c) {}
 };
@@ -191,6 +251,73 @@ struct ForStmt : Stmt {
     ExprPtr start, end, step;
     Block body;
     ForStmt(int l, int c) : Stmt(Kind::For, l, c) {}
+};
+
+struct CaseBranch {
+    std::vector<ExprPtr> values;
+    Block body;
+    int line = 0, col = 0;
+};
+
+struct CaseStmt : Stmt {
+    ExprPtr selector;
+    std::vector<CaseBranch> branches;
+    Block otherwiseBlock;
+    CaseStmt(int l, int c) : Stmt(Kind::Case, l, c) {}
+};
+
+struct TypeDeclStmt : Stmt {
+    RecordDef recordDef;
+    TypeDeclStmt(int l, int c) : Stmt(Kind::TypeDecl, l, c) {}
+};
+
+struct ProcedureDeclStmt : Stmt {
+    std::string name;
+    std::vector<ParamDef> params;
+    Block body;
+    ProcedureDeclStmt(int l, int c) : Stmt(Kind::ProcedureDecl, l, c) {}
+};
+
+struct FunctionDeclStmt : Stmt {
+    std::string name;
+    std::vector<ParamDef> params;
+    TypeInfo returnType;
+    Block body;
+    FunctionDeclStmt(int l, int c) : Stmt(Kind::FunctionDecl, l, c) {}
+};
+
+struct CallStmt : Stmt {
+    std::string name;
+    std::vector<ExprPtr> args;
+    CallStmt(int l, int c) : Stmt(Kind::Call, l, c) {}
+};
+
+struct ReturnStmt : Stmt {
+    ExprPtr value; // null if void/procedure return
+    ReturnStmt(int l, int c) : Stmt(Kind::Return, l, c) {}
+};
+
+struct OpenFileStmt : Stmt {
+    ExprPtr filename;
+    std::string mode; // "READ", "WRITE", "APPEND"
+    OpenFileStmt(int l, int c) : Stmt(Kind::OpenFile, l, c) {}
+};
+
+struct CloseFileStmt : Stmt {
+    ExprPtr filename;
+    CloseFileStmt(int l, int c) : Stmt(Kind::CloseFile, l, c) {}
+};
+
+struct ReadFileStmt : Stmt {
+    ExprPtr filename;
+    ExprPtr target; // lvalue target
+    ReadFileStmt(int l, int c) : Stmt(Kind::ReadFile, l, c) {}
+};
+
+struct WriteFileStmt : Stmt {
+    ExprPtr filename;
+    ExprPtr value;
+    WriteFileStmt(int l, int c) : Stmt(Kind::WriteFile, l, c) {}
 };
 
 #endif // PSEUDOC_AST_H

@@ -1,0 +1,16 @@
+DECLARE line : STRING
+
+OPENFILE "test_sample.txt" FOR WRITE
+WRITEFILE "test_sample.txt", "First Line"
+WRITEFILE "test_sample.txt", "Second Line"
+WRITEFILE "test_sample.txt", "Third Line"
+CLOSEFILE "test_sample.txt"
+
+OPENFILE "test_sample.txt" FOR READ
+
+WHILE NOT EOF("test_sample.txt") DO
+    READFILE "test_sample.txt", line
+    OUTPUT "Read: ", line
+ENDWHILE
+
+CLOSEFILE "test_sample.txt"

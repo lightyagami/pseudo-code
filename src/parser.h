@@ -35,12 +35,22 @@ private:
     StmtPtr parseStatement();
     StmtPtr parseDeclare();
     TypeInfo parseType();
-    StmtPtr parseAssignOrArrayAssign(const Token& name);
+    StmtPtr parseAssignOrMemberOrArray(const Token& name);
     StmtPtr parseOutput();
     StmtPtr parseInput();
     StmtPtr parseIf();
     StmtPtr parseWhile();
     StmtPtr parseFor();
+    StmtPtr parseCase();
+    StmtPtr parseTypeDecl();
+    StmtPtr parseProcedureDecl();
+    StmtPtr parseFunctionDecl();
+    StmtPtr parseCall();
+    StmtPtr parseReturn();
+    StmtPtr parseOpenFile();
+    StmtPtr parseCloseFile();
+    StmtPtr parseReadFile();
+    StmtPtr parseWriteFile();
 
     ExprPtr parseExpr();
     ExprPtr parseOr();
@@ -49,6 +59,7 @@ private:
     ExprPtr parseAddition();
     ExprPtr parseMultiplication();
     ExprPtr parseUnary();
+    ExprPtr parsePostfix(ExprPtr expr);
     ExprPtr parseBuiltInCall(Tok funcTok);
     ExprPtr parsePrimary();
 };

@@ -1,0 +1,42 @@
+PROCEDURE TestByVal(x : INTEGER)
+    x <- x + 100
+ENDPROCEDURE
+
+PROCEDURE Swap(BYREF a : INTEGER, BYREF b : INTEGER)
+    DECLARE temp : INTEGER
+    temp <- a
+    a <- b
+    b <- temp
+ENDPROCEDURE
+
+FUNCTION Factorial(n : INTEGER) RETURNS INTEGER
+    IF n <= 1 THEN
+        RETURN 1
+    ELSE
+        RETURN n * Factorial(n - 1)
+    ENDIF
+ENDFUNCTION
+
+FUNCTION AddThree(a : INTEGER, b : INTEGER, c : INTEGER) RETURNS INTEGER
+    RETURN a + b + c
+ENDFUNCTION
+
+DECLARE x : INTEGER
+DECLARE y : INTEGER
+x <- 10
+y <- 20
+
+// Test BYVAL
+CALL TestByVal(x)
+OUTPUT "x after byval:", x
+
+// Test BYREF swap
+CALL Swap(x, y)
+OUTPUT "x after swap:", x
+OUTPUT "y after swap:", y
+
+// Test recursion
+OUTPUT "fact 5:", Factorial(5)
+
+// Test function expression
+OUTPUT "sum 3:", AddThree(1, 2, 3)

@@ -2,6 +2,7 @@
 #define PSEUDOC_BYTECODE_H
 
 #include "ast.h"
+#include "sema.h"
 
 #include <cstdint>
 #include <iostream>
@@ -12,8 +13,10 @@
 #include <vector>
 
 struct ArrayData;
+struct RecordData;
+struct RefTarget;
 
-enum class ValueKind { Nil, Int, Real, Bool, String, Array };
+enum class ValueKind { Nil, Int, Real, Bool, String, Array, Record, Ref };
 
 struct Value {
     ValueKind kind = ValueKind::Nil;
@@ -22,6 +25,8 @@ struct Value {
     bool boolVal = false;
     std::string strVal;
     std::shared_ptr<ArrayData> arrVal;
+    std::shared_ptr<RecordData> recVal;
+    std::shared_ptr<RefTarget> refVal;
 
     static Value makeNil() { return Value(); }
     static Value makeInt(int64_t v) { Value val; val.kind = ValueKind::Int; val.intVal = v; return val; }
@@ -29,6 +34,8 @@ struct Value {
     static Value makeBool(bool v) { Value val; val.kind = ValueKind::Bool; val.boolVal = v; return val; }
     static Value makeString(std::string v) { Value val; val.kind = ValueKind::String; val.strVal = std::move(v); return val; }
     static Value makeArray(std::shared_ptr<ArrayData> v) { Value val; val.kind = ValueKind::Array; val.arrVal = std::move(v); return val; }
+    static Value makeRecord(std::shared_ptr<RecordData> v) { Value val; val.kind = ValueKind::Record; val.recVal = std::move(v); return val; }
+    static Value makeRef(std::shared_ptr<RefTarget> v) { Value val; val.kind = ValueKind::Ref; val.refVal = std::move(v); return val; }
 
     bool isNil() const { return kind == ValueKind::Nil; }
     bool isInt() const { return kind == ValueKind::Int; }
@@ -36,6 +43,8 @@ struct Value {
     bool isBool() const { return kind == ValueKind::Bool; }
     bool isString() const { return kind == ValueKind::String; }
     bool isArray() const { return kind == ValueKind::Array; }
+    bool isRecord() const { return kind == ValueKind::Record; }
+    bool isRef() const { return kind == ValueKind::Ref; }
 
     int64_t asInt() const { return intVal; }
     double asReal() const { return isInt() ? static_cast<double>(intVal) : realVal; }
@@ -44,6 +53,23 @@ struct Value {
 
     void print(std::ostream& os) const;
 };
+
+struct RecordData {
+    std::string typeName;
+    std::unordered_map<std::string, Value> fields;
+};
+
+inline Value copyValue(const Value& v) {
+    if (v.isRecord() && v.recVal) {
+        auto newRec = std::make_shared<RecordData>();
+        newRec->typeName = v.recVal->typeName;
+        for (const auto& kv : v.recVal->fields) {
+            newRec->fields[kv.first] = copyValue(kv.second);
+        }
+        return Value::makeRecord(newRec);
+    }
+    return v;
+}
 
 struct ArrayData {
     int dims = 1;
@@ -61,21 +87,81 @@ struct ArrayData {
     }
 };
 
+struct RefTarget {
+    enum class Kind { Global, StackSlot, Array1D, Array2D, RecordField };
+    Kind kind = Kind::Global;
+    int globalSlot = -1;
+    size_t stackIndex = 0;
+    std::shared_ptr<ArrayData> array;
+    size_t arrayOffset = 0;
+    std::shared_ptr<RecordData> record;
+    std::string fieldName;
+
+    static std::shared_ptr<RefTarget> makeGlobal(int slot) {
+        auto r = std::make_shared<RefTarget>();
+        r->kind = Kind::Global;
+        r->globalSlot = slot;
+        return r;
+    }
+    static std::shared_ptr<RefTarget> makeStackSlot(size_t idx) {
+        auto r = std::make_shared<RefTarget>();
+        r->kind = Kind::StackSlot;
+        r->stackIndex = idx;
+        return r;
+    }
+    static std::shared_ptr<RefTarget> makeArray(std::shared_ptr<ArrayData> arr, size_t off) {
+        auto r = std::make_shared<RefTarget>();
+        r->kind = Kind::Array1D;
+        r->array = std::move(arr);
+        r->arrayOffset = off;
+        return r;
+    }
+    static std::shared_ptr<RefTarget> makeField(std::shared_ptr<RecordData> rec, std::string field) {
+        auto r = std::make_shared<RefTarget>();
+        r->kind = Kind::RecordField;
+        r->record = std::move(rec);
+        r->fieldName = std::move(field);
+        return r;
+    }
+};
+
 enum class OpCode : uint8_t {
     OpConstant,
     OpPop,
     OpDup,
     OpWidenReal,
 
-    // Global variable access
-    OpGetGlobal,
-    OpSetGlobal,
+    // Variable access (inst.a < 0 -> local -inst.a-1, inst.a >= 0 -> global inst.a)
+    OpGetVar,
+    OpSetVar,
+
+    // Lvalue reference pushing for BYREF calls
+    OpPushRefVar,
+    OpPushRefArray1D,
+    OpPushRefArray2D,
+    OpPushRefField,
 
     // Array operations
     OpGetArray1D,
     OpSetArray1D,
     OpGetArray2D,
     OpSetArray2D,
+
+    // Record operations
+    OpGetField,
+    OpSetField,
+
+    // Procedure and Function calls
+    OpCall,
+    OpReturn,
+    OpReturnVal,
+
+    // File I/O
+    OpOpenFile,
+    OpCloseFile,
+    OpReadFile,
+    OpWriteFile,
+    OpEof,
 
     // Arithmetic
     OpAdd,
@@ -136,10 +222,23 @@ struct Instruction {
     int line = 0;
 };
 
+struct FunctionInfo {
+    std::string name;
+    bool isFunction = false;
+    size_t entryIp = 0;
+    int numParams = 0;
+    int numLocals = 0;
+    std::vector<bool> paramIsByRef;
+    TypeInfo returnType;
+    std::vector<std::pair<std::string, TypeInfo>> localVars;
+};
+
 struct Chunk {
     std::vector<Instruction> code;
     std::vector<Value> constants;
     std::vector<std::pair<std::string, TypeInfo>> varDescs;
+    std::unordered_map<std::string, FunctionInfo> functions;
+    std::unordered_map<std::string, RecordDef> recordTypes;
 };
 
 const char* opCodeName(OpCode op);
@@ -148,7 +247,9 @@ void dumpBytecode(const Chunk& chunk, const std::string& name, std::ostream& os 
 
 class BytecodeCompiler {
 public:
-    explicit BytecodeCompiler(const std::vector<std::pair<std::string, TypeInfo>>& vars);
+    BytecodeCompiler(const std::vector<std::pair<std::string, TypeInfo>>& vars,
+                     const std::unordered_map<std::string, RecordDef>& records,
+                     const std::unordered_map<std::string, Sema::FunctionSig>& funcs);
 
     Chunk compile(const Block& program);
 
@@ -156,7 +257,22 @@ private:
     std::vector<std::pair<std::string, TypeInfo>> allVars_;
     std::unordered_map<std::string, int> slotMap_;
     std::unordered_map<std::string, TypeInfo> typeMap_;
+    const std::unordered_map<std::string, RecordDef>& recordTypes_;
+    const std::unordered_map<std::string, Sema::FunctionSig>& functions_;
     Chunk chunk_;
+
+    // Function/Procedure compilation state
+    bool insideFunction_ = false;
+    std::vector<std::pair<std::string, TypeInfo>> localVars_;
+    std::unordered_map<std::string, int> localSlotMap_;
+    std::unordered_map<std::string, TypeInfo> localTypeMap_;
+    std::unordered_map<std::string, bool> localIsByRef_;
+
+    static int encodeSlot(int slot, bool isLocal) {
+        return isLocal ? -(slot + 1) : slot;
+    }
+    int getVarSlot(const std::string& name) const;
+    TypeInfo getVarType(const std::string& name) const;
 
     int addConstant(Value v);
     int emit(OpCode op, int32_t a = 0, int32_t b = 0, int32_t c = 0, int32_t d = 0, int line = 0);
@@ -167,6 +283,8 @@ private:
     void compileBlock(const Block& block);
     void compileStmt(const Stmt& s);
     void compileExpr(const Expr& e);
+    void compileLValueRef(const Expr& e);
+    void compileCase(const CaseStmt& c);
 };
 
 #endif // PSEUDOC_BYTECODE_H

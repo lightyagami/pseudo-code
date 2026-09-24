@@ -23,6 +23,12 @@ void Value::print(std::ostream& os) const {
         case ValueKind::Array:
             os << "<array>";
             break;
+        case ValueKind::Record:
+            os << "<record " << (recVal ? recVal->typeName : "") << ">";
+            break;
+        case ValueKind::Ref:
+            os << "<ref>";
+            break;
         case ValueKind::Nil:
             os << "<nil>";
             break;
@@ -35,12 +41,26 @@ const char* opCodeName(OpCode op) {
         case OpCode::OpPop:                return "OP_POP";
         case OpCode::OpDup:                return "OP_DUP";
         case OpCode::OpWidenReal:          return "OP_WIDEN_REAL";
-        case OpCode::OpGetGlobal:          return "OP_GET_GLOBAL";
-        case OpCode::OpSetGlobal:          return "OP_SET_GLOBAL";
+        case OpCode::OpGetVar:             return "OP_GET_VAR";
+        case OpCode::OpSetVar:             return "OP_SET_VAR";
+        case OpCode::OpPushRefVar:         return "OP_PUSH_REF_VAR";
+        case OpCode::OpPushRefArray1D:     return "OP_PUSH_REF_ARRAY_1D";
+        case OpCode::OpPushRefArray2D:     return "OP_PUSH_REF_ARRAY_2D";
+        case OpCode::OpPushRefField:       return "OP_PUSH_REF_FIELD";
         case OpCode::OpGetArray1D:         return "OP_GET_ARRAY_1D";
         case OpCode::OpSetArray1D:         return "OP_SET_ARRAY_1D";
         case OpCode::OpGetArray2D:         return "OP_GET_ARRAY_2D";
         case OpCode::OpSetArray2D:         return "OP_SET_ARRAY_2D";
+        case OpCode::OpGetField:           return "OP_GET_FIELD";
+        case OpCode::OpSetField:           return "OP_SET_FIELD";
+        case OpCode::OpCall:               return "OP_CALL";
+        case OpCode::OpReturn:             return "OP_RETURN";
+        case OpCode::OpReturnVal:          return "OP_RETURN_VAL";
+        case OpCode::OpOpenFile:           return "OP_OPEN_FILE";
+        case OpCode::OpCloseFile:          return "OP_CLOSE_FILE";
+        case OpCode::OpReadFile:           return "OP_READ_FILE";
+        case OpCode::OpWriteFile:          return "OP_WRITE_FILE";
+        case OpCode::OpEof:                return "OP_EOF";
         case OpCode::OpAdd:                return "OP_ADD";
         case OpCode::OpSub:                return "OP_SUB";
         case OpCode::OpMul:                return "OP_MUL";
@@ -95,19 +115,33 @@ void printInstruction(std::ostream& os, const Chunk& chunk, size_t ip) {
             }
             os << ")";
             break;
-        case OpCode::OpGetGlobal:
-        case OpCode::OpSetGlobal:
-            os << " slot:" << inst.a;
-            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.varDescs.size()))
-                os << " (" << chunk.varDescs[inst.a].first << ")";
+        case OpCode::OpGetVar:
+        case OpCode::OpSetVar:
+        case OpCode::OpPushRefVar:
+            if (inst.a < 0) os << " local:" << (-inst.a - 1);
+            else os << " global:" << inst.a;
             break;
         case OpCode::OpGetArray1D:
         case OpCode::OpSetArray1D:
         case OpCode::OpGetArray2D:
         case OpCode::OpSetArray2D:
-            os << " slot:" << inst.a;
-            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.varDescs.size()))
-                os << " (" << chunk.varDescs[inst.a].first << ")";
+        case OpCode::OpPushRefArray1D:
+        case OpCode::OpPushRefArray2D:
+            if (inst.a < 0) os << " local:" << (-inst.a - 1);
+            else os << " global:" << inst.a;
+            if (inst.b >= 0 && inst.b < static_cast<int>(chunk.constants.size()))
+                os << " (" << chunk.constants[inst.b].asString() << ")";
+            break;
+        case OpCode::OpGetField:
+        case OpCode::OpSetField:
+        case OpCode::OpPushRefField:
+            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.constants.size()))
+                os << " ." << chunk.constants[inst.a].asString();
+            break;
+        case OpCode::OpCall:
+            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.constants.size()))
+                os << " " << chunk.constants[inst.a].asString();
+            os << " args:" << inst.b << (inst.c ? " [returns val]" : " [void]");
             break;
         case OpCode::OpJump:
         case OpCode::OpJumpIfFalse:
@@ -124,6 +158,10 @@ void printInstruction(std::ostream& os, const Chunk& chunk, size_t ip) {
         case OpCode::OpForStep:
             os << " var:" << inst.a << " step:" << inst.b;
             break;
+        case OpCode::OpOpenFile:
+            if (inst.a >= 0 && inst.a < static_cast<int>(chunk.constants.size()))
+                os << " mode:" << chunk.constants[inst.a].asString();
+            break;
         default:
             break;
     }
@@ -138,9 +176,17 @@ void dumpBytecode(const Chunk& chunk, const std::string& name, std::ostream& os)
         if (chunk.constants[i].isString()) os << "\"" << chunk.constants[i].asString() << "\"\n";
         else { chunk.constants[i].print(os); os << "\n"; }
     }
-    os << "Variables (" << chunk.varDescs.size() << "):\n";
+    os << "Globals (" << chunk.varDescs.size() << "):\n";
     for (size_t i = 0; i < chunk.varDescs.size(); ++i) {
         os << "  slot " << i << ": " << chunk.varDescs[i].first << " (" << typeString(chunk.varDescs[i].second) << ")\n";
+    }
+    if (!chunk.functions.empty()) {
+        os << "Functions (" << chunk.functions.size() << "):\n";
+        for (const auto& [fname, fi] : chunk.functions) {
+            os << "  " << (fi.isFunction ? "FUNCTION " : "PROCEDURE ") << fname
+               << " @ IP " << fi.entryIp << " (params: " << fi.numParams
+               << ", locals: " << fi.numLocals << ")\n";
+        }
     }
     os << "Instructions (" << chunk.code.size() << "):\n";
     os << "IP     LINE  OPCODE                    OPERANDS\n";
@@ -151,21 +197,30 @@ void dumpBytecode(const Chunk& chunk, const std::string& name, std::ostream& os)
     os << "========================================================\n";
 }
 
-BytecodeCompiler::BytecodeCompiler(const std::vector<std::pair<std::string, TypeInfo>>& vars)
-    : allVars_(vars) {
+BytecodeCompiler::BytecodeCompiler(const std::vector<std::pair<std::string, TypeInfo>>& vars,
+                                   const std::unordered_map<std::string, RecordDef>& records,
+                                   const std::unordered_map<std::string, Sema::FunctionSig>& funcs)
+    : allVars_(vars), recordTypes_(records), functions_(funcs) {
     for (size_t i = 0; i < vars.size(); ++i) {
         slotMap_[vars[i].first] = static_cast<int>(i);
         typeMap_[vars[i].first] = vars[i].second;
     }
 }
 
-Chunk BytecodeCompiler::compile(const Block& program) {
-    for (const auto& stmt : program) {
-        compileStmt(*stmt);
+int BytecodeCompiler::getVarSlot(const std::string& name) const {
+    if (insideFunction_) {
+        auto it = localSlotMap_.find(name);
+        if (it != localSlotMap_.end()) return encodeSlot(it->second, true);
     }
-    emit(OpCode::OpHalt, 0, 0, 0, 0, 0);
-    chunk_.varDescs = allVars_;
-    return std::move(chunk_);
+    return encodeSlot(slotMap_.at(name), false);
+}
+
+TypeInfo BytecodeCompiler::getVarType(const std::string& name) const {
+    if (insideFunction_) {
+        auto it = localTypeMap_.find(name);
+        if (it != localTypeMap_.end()) return it->second;
+    }
+    return typeMap_.at(name);
 }
 
 int BytecodeCompiler::addConstant(Value v) {
@@ -196,48 +251,261 @@ void BytecodeCompiler::patchJump(int jumpInst) {
 }
 
 int BytecodeCompiler::allocateTempVar(BaseType base) {
-    int slot = static_cast<int>(allVars_.size());
-    std::string name = "$tmp_" + std::to_string(slot);
-    TypeInfo t{base, false, 0, 0, 0, 0, 0};
-    allVars_.emplace_back(name, t);
-    slotMap_[name] = slot;
-    typeMap_[name] = t;
-    return slot;
+    TypeInfo t{base, "", false, 0, 0, 0, 0, 0};
+    if (insideFunction_) {
+        int slot = static_cast<int>(localVars_.size());
+        std::string name = "$tmp_" + std::to_string(slot);
+        localVars_.emplace_back(name, t);
+        localSlotMap_[name] = slot;
+        localTypeMap_[name] = t;
+        localIsByRef_[name] = false;
+        return encodeSlot(slot, true);
+    } else {
+        int slot = static_cast<int>(allVars_.size());
+        std::string name = "$tmp_" + std::to_string(slot);
+        allVars_.emplace_back(name, t);
+        slotMap_[name] = slot;
+        typeMap_[name] = t;
+        return encodeSlot(slot, false);
+    }
+}
+
+Chunk BytecodeCompiler::compile(const Block& program) {
+    chunk_.recordTypes = recordTypes_;
+
+    // Emit initial jump to bypass procedures and functions
+    int jumpToMain = emitJump(OpCode::OpJump, 0);
+
+    // Compile procedure and function declarations first
+    for (const auto& stmt : program) {
+        if (stmt->kind == Stmt::Kind::ProcedureDecl) {
+            auto& p = static_cast<const ProcedureDeclStmt&>(*stmt);
+            FunctionInfo fi;
+            fi.name = p.name;
+            fi.isFunction = false;
+            fi.entryIp = chunk_.code.size();
+            fi.numParams = static_cast<int>(p.params.size());
+
+            insideFunction_ = true;
+            localVars_.clear();
+            localSlotMap_.clear();
+            localTypeMap_.clear();
+            localIsByRef_.clear();
+
+            for (const auto& param : p.params) {
+                int slot = static_cast<int>(localVars_.size());
+                localVars_.emplace_back(param.name, param.type);
+                localSlotMap_[param.name] = slot;
+                localTypeMap_[param.name] = param.type;
+                localIsByRef_[param.name] = param.isByRef;
+                fi.paramIsByRef.push_back(param.isByRef);
+            }
+
+            compileBlock(p.body);
+            emit(OpCode::OpReturn, 0, 0, 0, 0, p.line);
+
+            fi.numLocals = static_cast<int>(localVars_.size());
+            fi.localVars = localVars_;
+            chunk_.functions[p.name] = fi;
+
+            insideFunction_ = false;
+        } else if (stmt->kind == Stmt::Kind::FunctionDecl) {
+            auto& f = static_cast<const FunctionDeclStmt&>(*stmt);
+            FunctionInfo fi;
+            fi.name = f.name;
+            fi.isFunction = true;
+            fi.entryIp = chunk_.code.size();
+            fi.numParams = static_cast<int>(f.params.size());
+            fi.returnType = f.returnType;
+
+            insideFunction_ = true;
+            localVars_.clear();
+            localSlotMap_.clear();
+            localTypeMap_.clear();
+            localIsByRef_.clear();
+
+            for (const auto& param : f.params) {
+                int slot = static_cast<int>(localVars_.size());
+                localVars_.emplace_back(param.name, param.type);
+                localSlotMap_[param.name] = slot;
+                localTypeMap_[param.name] = param.type;
+                localIsByRef_[param.name] = param.isByRef;
+                fi.paramIsByRef.push_back(param.isByRef);
+            }
+
+            compileBlock(f.body);
+            // Default return value in case control falls through
+            int defConst = 0;
+            switch (f.returnType.base) {
+                case BaseType::Integer: defConst = addConstant(Value::makeInt(0)); break;
+                case BaseType::Real:    defConst = addConstant(Value::makeReal(0.0)); break;
+                case BaseType::Boolean: defConst = addConstant(Value::makeBool(false)); break;
+                case BaseType::String:  defConst = addConstant(Value::makeString("")); break;
+                default: break;
+            }
+            emit(OpCode::OpConstant, defConst, 0, 0, 0, f.line);
+            emit(OpCode::OpReturnVal, 0, 0, 0, 0, f.line);
+
+            fi.numLocals = static_cast<int>(localVars_.size());
+            fi.localVars = localVars_;
+            chunk_.functions[f.name] = fi;
+
+            insideFunction_ = false;
+        }
+    }
+
+    patchJump(jumpToMain);
+
+    // Compile main script statements
+    for (const auto& stmt : program) {
+        if (stmt->kind != Stmt::Kind::TypeDecl &&
+            stmt->kind != Stmt::Kind::ProcedureDecl &&
+            stmt->kind != Stmt::Kind::FunctionDecl) {
+            compileStmt(*stmt);
+        }
+    }
+
+    emit(OpCode::OpHalt, 0, 0, 0, 0, 0);
+    chunk_.varDescs = allVars_;
+    return std::move(chunk_);
 }
 
 void BytecodeCompiler::compileBlock(const Block& block) {
     for (const auto& s : block) compileStmt(*s);
 }
 
+void BytecodeCompiler::compileLValueRef(const Expr& e) {
+    switch (e.kind) {
+        case Expr::Kind::Var: {
+            auto& v = static_cast<const VarExpr&>(e);
+            int enc = getVarSlot(v.name);
+            emit(OpCode::OpPushRefVar, enc, 0, 0, 0, v.line);
+            break;
+        }
+        case Expr::Kind::ArrayAccess: {
+            auto& a = static_cast<const ArrayAccessExpr&>(e);
+            std::string arrName = a.name;
+            if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+                arrName = static_cast<const VarExpr&>(*a.target).name;
+            }
+            for (auto& idx : a.indices) {
+                compileExpr(*idx);
+            }
+            int enc = getVarSlot(arrName);
+            int nameConst = addConstant(Value::makeString(arrName));
+            if (a.indices.size() == 1) {
+                emit(OpCode::OpPushRefArray1D, enc, nameConst, 0, 0, a.line);
+            } else {
+                emit(OpCode::OpPushRefArray2D, enc, nameConst, 0, 0, a.line);
+            }
+            break;
+        }
+        case Expr::Kind::MemberAccess: {
+            auto& m = static_cast<const MemberAccessExpr&>(e);
+            compileExpr(*m.target);
+            int fieldConst = addConstant(Value::makeString(m.field));
+            emit(OpCode::OpPushRefField, fieldConst, 0, 0, 0, m.line);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+void BytecodeCompiler::compileCase(const CaseStmt& c) {
+    compileExpr(*c.selector);
+    int encSel = allocateTempVar(c.selector->type.base);
+    emit(OpCode::OpSetVar, encSel, 0, 0, 0, c.line);
+
+    std::vector<int> exitJumps;
+
+    for (const auto& branch : c.branches) {
+        if (branch.values.empty()) continue;
+
+        // sel == v0 || sel == v1 || ...
+        emit(OpCode::OpGetVar, encSel, 0, 0, 0, branch.line);
+        compileExpr(*branch.values[0]);
+        emit(OpCode::OpEqual, 0, 0, 0, 0, branch.line);
+
+        std::vector<int> orJumps;
+        for (size_t i = 1; i < branch.values.size(); ++i) {
+            orJumps.push_back(emitJump(OpCode::OpJumpIfTrueOrPop, branch.values[i]->line));
+            emit(OpCode::OpGetVar, encSel, 0, 0, 0, branch.values[i]->line);
+            compileExpr(*branch.values[i]);
+            emit(OpCode::OpEqual, 0, 0, 0, 0, branch.values[i]->line);
+        }
+
+        for (int oj : orJumps) {
+            patchJump(oj);
+        }
+
+        int skipJump = emitJump(OpCode::OpJumpIfFalse, branch.line);
+        compileBlock(branch.body);
+        exitJumps.push_back(emitJump(OpCode::OpJump, branch.line));
+        patchJump(skipJump);
+    }
+
+    if (!c.otherwiseBlock.empty()) {
+        compileBlock(c.otherwiseBlock);
+    }
+
+    for (int ej : exitJumps) {
+        patchJump(ej);
+    }
+}
+
 void BytecodeCompiler::compileStmt(const Stmt& s) {
     switch (s.kind) {
-        case Stmt::Kind::Declare:
+        case Stmt::Kind::Declare: {
+            auto& d = static_cast<const DeclareStmt&>(s);
+            if (insideFunction_) {
+                int slot = static_cast<int>(localVars_.size());
+                localVars_.emplace_back(d.name, d.declaredType);
+                localSlotMap_[d.name] = slot;
+                localTypeMap_[d.name] = d.declaredType;
+                localIsByRef_[d.name] = false;
+            }
             break;
+        }
         case Stmt::Kind::Assign: {
             auto& a = static_cast<const AssignStmt&>(s);
             compileExpr(*a.value);
-            if (typeMap_.at(a.name).base == BaseType::Real && a.value->type.base == BaseType::Integer) {
+            TypeInfo varType = getVarType(a.name);
+            if (varType.base == BaseType::Real && a.value->type.base == BaseType::Integer) {
                 emit(OpCode::OpWidenReal, 0, 0, 0, 0, a.line);
             }
-            emit(OpCode::OpSetGlobal, slotMap_.at(a.name), 0, 0, 0, a.line);
+            emit(OpCode::OpSetVar, getVarSlot(a.name), 0, 0, 0, a.line);
             break;
         }
         case Stmt::Kind::ArrayAssign: {
             auto& a = static_cast<const ArrayAssignStmt&>(s);
+            std::string arrName = a.name;
+            if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+                arrName = static_cast<const VarExpr&>(*a.target).name;
+            }
             compileExpr(*a.value);
-            if (typeMap_.at(a.name).base == BaseType::Real && a.value->type.base == BaseType::Integer) {
+            TypeInfo varType = getVarType(arrName);
+            if (varType.base == BaseType::Real && a.value->type.base == BaseType::Integer) {
                 emit(OpCode::OpWidenReal, 0, 0, 0, 0, a.line);
             }
             for (auto& idx : a.indices) {
                 compileExpr(*idx);
             }
-            int slot = slotMap_.at(a.name);
-            int nameConst = addConstant(Value::makeString(a.name));
+            int enc = getVarSlot(arrName);
+            int nameConst = addConstant(Value::makeString(arrName));
             if (a.indices.size() == 1) {
-                emit(OpCode::OpSetArray1D, slot, nameConst, 0, 0, a.line);
+                emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, a.line);
             } else {
-                emit(OpCode::OpSetArray2D, slot, nameConst, 0, 0, a.line);
+                emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, a.line);
             }
+            break;
+        }
+        case Stmt::Kind::MemberAssign: {
+            auto& m = static_cast<const MemberAssignStmt&>(s);
+            compileExpr(*m.value);
+            compileExpr(*m.target);
+            int fieldConst = addConstant(Value::makeString(m.field));
+            emit(OpCode::OpSetField, fieldConst, 0, 0, 0, m.line);
             break;
         }
         case Stmt::Kind::Output: {
@@ -251,30 +519,41 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
         }
         case Stmt::Kind::Input: {
             auto& in = static_cast<const InputStmt&>(s);
-            int slot = slotMap_.at(in.name);
-            BaseType b = typeMap_.at(in.name).base;
+            TypeInfo t = in.target ? in.target->type : getVarType(in.name);
             OpCode readOp = OpCode::OpReadInt;
-            switch (b) {
+            switch (t.base) {
                 case BaseType::Integer: readOp = OpCode::OpReadInt; break;
                 case BaseType::Real:    readOp = OpCode::OpReadReal; break;
                 case BaseType::Boolean: readOp = OpCode::OpReadBool; break;
                 case BaseType::String:  readOp = OpCode::OpReadStr; break;
                 default: break;
             }
-            if (in.indices.empty()) {
-                emit(readOp, 0, 0, 0, 0, in.line);
-                emit(OpCode::OpSetGlobal, slot, 0, 0, 0, in.line);
+            emit(readOp, 0, 0, 0, 0, in.line);
+            if (in.target) {
+                if (in.target->kind == Expr::Kind::Var) {
+                    auto& v = static_cast<const VarExpr&>(*in.target);
+                    emit(OpCode::OpSetVar, getVarSlot(v.name), 0, 0, 0, in.line);
+                } else if (in.target->kind == Expr::Kind::ArrayAccess) {
+                    auto& a = static_cast<const ArrayAccessExpr&>(*in.target);
+                    for (auto& idx : a.indices) compileExpr(*idx);
+                    int enc = getVarSlot(a.name);
+                    int nameConst = addConstant(Value::makeString(a.name));
+                    if (a.indices.size() == 1) emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, in.line);
+                    else emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, in.line);
+                } else if (in.target->kind == Expr::Kind::MemberAccess) {
+                    auto& m = static_cast<const MemberAccessExpr&>(*in.target);
+                    compileExpr(*m.target);
+                    int fieldConst = addConstant(Value::makeString(m.field));
+                    emit(OpCode::OpSetField, fieldConst, 0, 0, 0, in.line);
+                }
+            } else if (in.indices.empty()) {
+                emit(OpCode::OpSetVar, getVarSlot(in.name), 0, 0, 0, in.line);
             } else {
-                emit(readOp, 0, 0, 0, 0, in.line);
-                for (auto& idx : in.indices) {
-                    compileExpr(*idx);
-                }
+                for (auto& idx : in.indices) compileExpr(*idx);
+                int enc = getVarSlot(in.name);
                 int nameConst = addConstant(Value::makeString(in.name));
-                if (in.indices.size() == 1) {
-                    emit(OpCode::OpSetArray1D, slot, nameConst, 0, 0, in.line);
-                } else {
-                    emit(OpCode::OpSetArray2D, slot, nameConst, 0, 0, in.line);
-                }
+                if (in.indices.size() == 1) emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, in.line);
+                else emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, in.line);
             }
             break;
         }
@@ -305,23 +584,23 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
         }
         case Stmt::Kind::For: {
             auto& f = static_cast<const ForStmt&>(s);
-            int varSlot = slotMap_.at(f.var);
+            int varSlot = getVarSlot(f.var);
             int endSlot = allocateTempVar(BaseType::Integer);
             int stepSlot = allocateTempVar(BaseType::Integer);
 
             compileExpr(*f.start);
-            emit(OpCode::OpSetGlobal, varSlot, 0, 0, 0, f.line);
+            emit(OpCode::OpSetVar, varSlot, 0, 0, 0, f.line);
 
             compileExpr(*f.end);
-            emit(OpCode::OpSetGlobal, endSlot, 0, 0, 0, f.line);
+            emit(OpCode::OpSetVar, endSlot, 0, 0, 0, f.line);
 
             if (f.step) {
                 compileExpr(*f.step);
-                emit(OpCode::OpSetGlobal, stepSlot, 0, 0, 0, f.step->line);
+                emit(OpCode::OpSetVar, stepSlot, 0, 0, 0, f.step->line);
             } else {
                 int oneConst = addConstant(Value::makeInt(1));
                 emit(OpCode::OpConstant, oneConst, 0, 0, 0, f.line);
-                emit(OpCode::OpSetGlobal, stepSlot, 0, 0, 0, f.line);
+                emit(OpCode::OpSetVar, stepSlot, 0, 0, 0, f.line);
             }
 
             emit(OpCode::OpCheckStep, stepSlot, 0, 0, 0, f.line);
@@ -337,6 +616,80 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
             chunk_.code[forCheckInst].d = static_cast<int32_t>(chunk_.code.size());
             break;
         }
+        case Stmt::Kind::Case:
+            compileCase(static_cast<const CaseStmt&>(s));
+            break;
+        case Stmt::Kind::Call: {
+            auto& c = static_cast<const CallStmt&>(s);
+            auto it = functions_.find(c.name);
+            int nameConst = addConstant(Value::makeString(c.name));
+            for (size_t i = 0; i < c.args.size(); ++i) {
+                bool isRef = (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef);
+                if (isRef) {
+                    compileLValueRef(*c.args[i]);
+                } else {
+                    compileExpr(*c.args[i]);
+                }
+            }
+            emit(OpCode::OpCall, nameConst, static_cast<int32_t>(c.args.size()), 0, 0, c.line);
+            break;
+        }
+        case Stmt::Kind::Return: {
+            auto& r = static_cast<const ReturnStmt&>(s);
+            if (r.value) {
+                compileExpr(*r.value);
+                emit(OpCode::OpReturnVal, 0, 0, 0, 0, r.line);
+            } else {
+                emit(OpCode::OpReturn, 0, 0, 0, 0, r.line);
+            }
+            break;
+        }
+        case Stmt::Kind::OpenFile: {
+            auto& o = static_cast<const OpenFileStmt&>(s);
+            compileExpr(*o.filename);
+            int modeConst = addConstant(Value::makeString(o.mode));
+            emit(OpCode::OpOpenFile, modeConst, 0, 0, 0, o.line);
+            break;
+        }
+        case Stmt::Kind::CloseFile: {
+            auto& cf = static_cast<const CloseFileStmt&>(s);
+            compileExpr(*cf.filename);
+            emit(OpCode::OpCloseFile, 0, 0, 0, 0, cf.line);
+            break;
+        }
+        case Stmt::Kind::ReadFile: {
+            auto& rf = static_cast<const ReadFileStmt&>(s);
+            compileExpr(*rf.filename);
+            emit(OpCode::OpReadFile, static_cast<int>(rf.target->type.base), 0, 0, 0, rf.line);
+            if (rf.target->kind == Expr::Kind::Var) {
+                auto& v = static_cast<const VarExpr&>(*rf.target);
+                emit(OpCode::OpSetVar, getVarSlot(v.name), 0, 0, 0, rf.line);
+            } else if (rf.target->kind == Expr::Kind::ArrayAccess) {
+                auto& a = static_cast<const ArrayAccessExpr&>(*rf.target);
+                for (auto& idx : a.indices) compileExpr(*idx);
+                int enc = getVarSlot(a.name);
+                int nameConst = addConstant(Value::makeString(a.name));
+                if (a.indices.size() == 1) emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, rf.line);
+                else emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, rf.line);
+            } else if (rf.target->kind == Expr::Kind::MemberAccess) {
+                auto& m = static_cast<const MemberAccessExpr&>(*rf.target);
+                compileExpr(*m.target);
+                int fieldConst = addConstant(Value::makeString(m.field));
+                emit(OpCode::OpSetField, fieldConst, 0, 0, 0, rf.line);
+            }
+            break;
+        }
+        case Stmt::Kind::WriteFile: {
+            auto& wf = static_cast<const WriteFileStmt&>(s);
+            compileExpr(*wf.filename);
+            compileExpr(*wf.value);
+            emit(OpCode::OpWriteFile, 0, 0, 0, 0, wf.line);
+            break;
+        }
+        case Stmt::Kind::TypeDecl:
+        case Stmt::Kind::ProcedureDecl:
+        case Stmt::Kind::FunctionDecl:
+            break;
     }
 }
 
@@ -369,21 +722,32 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
         }
         case Expr::Kind::Var: {
             auto& v = static_cast<const VarExpr&>(e);
-            emit(OpCode::OpGetGlobal, slotMap_.at(v.name), 0, 0, 0, v.line);
+            emit(OpCode::OpGetVar, getVarSlot(v.name), 0, 0, 0, v.line);
             break;
         }
         case Expr::Kind::ArrayAccess: {
             auto& a = static_cast<const ArrayAccessExpr&>(e);
+            std::string arrName = a.name;
+            if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+                arrName = static_cast<const VarExpr&>(*a.target).name;
+            }
             for (auto& idx : a.indices) {
                 compileExpr(*idx);
             }
-            int slot = slotMap_.at(a.name);
-            int nameConst = addConstant(Value::makeString(a.name));
+            int enc = getVarSlot(arrName);
+            int nameConst = addConstant(Value::makeString(arrName));
             if (a.indices.size() == 1) {
-                emit(OpCode::OpGetArray1D, slot, nameConst, 0, 0, a.line);
+                emit(OpCode::OpGetArray1D, enc, nameConst, 0, 0, a.line);
             } else {
-                emit(OpCode::OpGetArray2D, slot, nameConst, 0, 0, a.line);
+                emit(OpCode::OpGetArray2D, enc, nameConst, 0, 0, a.line);
             }
+            break;
+        }
+        case Expr::Kind::MemberAccess: {
+            auto& m = static_cast<const MemberAccessExpr&>(e);
+            compileExpr(*m.target);
+            int fieldConst = addConstant(Value::makeString(m.field));
+            emit(OpCode::OpGetField, fieldConst, 0, 0, 0, m.line);
             break;
         }
         case Expr::Kind::Unary: {
@@ -444,8 +808,24 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
                 case Tok::LCase:     emit(OpCode::OpLCase, 0, 0, 0, 0, c.line); break;
                 case Tok::NumToStr:  emit(OpCode::OpNumToStr, 0, 0, 0, 0, c.line); break;
                 case Tok::StrToNum:  emit(OpCode::OpStrToNum, 0, 0, 0, 0, c.line); break;
+                case Tok::EofFunc:   emit(OpCode::OpEof, 0, 0, 0, 0, c.line); break;
                 default: break;
             }
+            break;
+        }
+        case Expr::Kind::UserCall: {
+            auto& uc = static_cast<const UserCallExpr&>(e);
+            auto it = functions_.find(uc.callee);
+            int nameConst = addConstant(Value::makeString(uc.callee));
+            for (size_t i = 0; i < uc.args.size(); ++i) {
+                bool isRef = (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef);
+                if (isRef) {
+                    compileLValueRef(*uc.args[i]);
+                } else {
+                    compileExpr(*uc.args[i]);
+                }
+            }
+            emit(OpCode::OpCall, nameConst, static_cast<int32_t>(uc.args.size()), 1, 0, uc.line);
             break;
         }
     }

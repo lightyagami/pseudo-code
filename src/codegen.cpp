@@ -1,64 +1,30 @@
 #include "codegen.h"
 
-CodeGen::CodeGen(const std::vector<std::pair<std::string, TypeInfo>>& vars)
-    : vars_(vars) {
+CodeGen::CodeGen(const std::vector<std::pair<std::string, TypeInfo>>& vars,
+                 const std::unordered_map<std::string, RecordDef>& records,
+                 const std::unordered_map<std::string, Sema::FunctionSig>& funcs)
+    : vars_(vars), recordTypes_(records), functions_(funcs) {
     for (const auto& v : vars_) varMap_[v.first] = v.second;
 }
 
-std::string CodeGen::generate(const Block& program) {
-    emitRuntimeHeaders();
-
-    // Large arrays are emitted as file-scope static variables to avoid stack overflow
-    bool hasArrays = false;
-    for (const auto& v : vars_) {
-        if (v.second.isArray) {
-            hasArrays = true;
-            long long n1 = (v.second.upper1 - v.second.lower1 + 1);
-            if (v.second.dims == 1) {
-                out_ << "static " << cBaseType(v.second.base) << " " << cName(v.first)
-                     << "[" << n1 << "];\n";
-            } else {
-                long long n2 = (v.second.upper2 - v.second.lower2 + 1);
-                out_ << "static " << cBaseType(v.second.base) << " " << cName(v.first)
-                     << "[" << n1 << "][" << n2 << "];\n";
-            }
-        }
-    }
-    if (hasArrays) out_ << "\n";
-
-    out_ << "int main(void) {\n";
-    indent_ = 1;
-
-    // Scalar declarations inside main()
-    for (const auto& v : vars_) {
-        if (!v.second.isArray) {
-            line(cBaseType(v.second.base) + " " + cName(v.first) + " = " + zeroValue(v.second.base) + ";");
-        }
-    }
-    if (!vars_.empty()) out_ << "\n";
-
-    emitBlock(program);
-    line("pc_cleanup();");
-    line("return 0;");
-    out_ << "}\n";
-    return out_.str();
+std::string CodeGen::cTypeName(const std::string& name) {
+    return "pc_type_" + name;
 }
 
-void CodeGen::line(const std::string& text) {
-    out_ << std::string(indent_ * 4, ' ') << text << "\n";
-}
-
-std::string CodeGen::cBaseType(BaseType t) {
-    switch (t) {
+std::string CodeGen::cBaseType(const TypeInfo& t) {
+    if (t.base == BaseType::Record) return cTypeName(t.recordName);
+    switch (t.base) {
         case BaseType::Integer: return "long long";
         case BaseType::Real:    return "double";
         case BaseType::Boolean: return "bool";
+        case BaseType::Void:    return "void";
         default:                return "const char*";
     }
 }
 
-std::string CodeGen::zeroValue(BaseType t) {
-    switch (t) {
+std::string CodeGen::zeroValue(const TypeInfo& t) {
+    if (t.base == BaseType::Record) return "{0}";
+    switch (t.base) {
         case BaseType::Integer: return "0";
         case BaseType::Real:    return "0.0";
         case BaseType::Boolean: return "false";
@@ -86,6 +52,10 @@ std::string CodeGen::escapeCStr(const std::string& s) {
     return out;
 }
 
+void CodeGen::line(const std::string& text) {
+    out_ << std::string(indent_ * 4, ' ') << text << "\n";
+}
+
 void CodeGen::emitRuntimeHeaders() {
     out_ << "#include <stdio.h>\n"
          << "#include <stdlib.h>\n"
@@ -102,7 +72,67 @@ void CodeGen::emitRuntimeHeaders() {
          << "    n->ptr = p; n->next = pc_gc_head; pc_gc_head = n;\n"
          << "    return p;\n"
          << "}\n"
+         << "// --- File I/O Runtime Tracker ---\n"
+         << "typedef struct PC_File { char name[256]; FILE* fp; struct PC_File* next; } PC_File;\n"
+         << "static PC_File* pc_files_head = NULL;\n"
+         << "static void pc_open_file(const char* name, const char* mode) {\n"
+         << "    const char* m = \"r\";\n"
+         << "    if (strcmp(mode, \"WRITE\") == 0) m = \"w\";\n"
+         << "    else if (strcmp(mode, \"APPEND\") == 0) m = \"a\";\n"
+         << "    FILE* fp = fopen(name, m);\n"
+         << "    if (!fp) { fprintf(stderr, \"Runtime Error: Cannot open file '%s' for %s\\n\", name, mode); exit(1); }\n"
+         << "    PC_File* f = (PC_File*)malloc(sizeof(PC_File));\n"
+         << "    strncpy(f->name, name, sizeof(f->name) - 1); f->name[sizeof(f->name) - 1] = '\\0';\n"
+         << "    f->fp = fp; f->next = pc_files_head; pc_files_head = f;\n"
+         << "}\n"
+         << "static FILE* pc_get_file(const char* name) {\n"
+         << "    PC_File* cur = pc_files_head;\n"
+         << "    while (cur) {\n"
+         << "        if (strcmp(cur->name, name) == 0) return cur->fp;\n"
+         << "        cur = cur->next;\n"
+         << "    }\n"
+         << "    fprintf(stderr, \"Runtime Error: File '%s' is not open\\n\", name); exit(1);\n"
+         << "    return NULL;\n"
+         << "}\n"
+         << "static void pc_close_file(const char* name) {\n"
+         << "    PC_File** cur = &pc_files_head;\n"
+         << "    while (*cur) {\n"
+         << "        if (strcmp((*cur)->name, name) == 0) {\n"
+         << "            PC_File* to_del = *cur;\n"
+         << "            fclose(to_del->fp);\n"
+         << "            *cur = to_del->next;\n"
+         << "            free(to_del);\n"
+         << "            return;\n"
+         << "        }\n"
+         << "        cur = &((*cur)->next);\n"
+         << "    }\n"
+         << "}\n"
+         << "static char* pc_read_file_line(const char* name) {\n"
+         << "    FILE* fp = pc_get_file(name);\n"
+         << "    static char fbuf[4096];\n"
+         << "    if (!fgets(fbuf, sizeof(fbuf), fp)) fbuf[0] = '\\0';\n"
+         << "    size_t len = strlen(fbuf);\n"
+         << "    while (len > 0 && (fbuf[len - 1] == '\\n' || fbuf[len - 1] == '\\r')) fbuf[--len] = '\\0';\n"
+         << "    return (char*)pc_track(strdup(fbuf));\n"
+         << "}\n"
+         << "static void pc_write_file_line(const char* name, const char* str) {\n"
+         << "    FILE* fp = pc_get_file(name);\n"
+         << "    fprintf(fp, \"%s\\n\", str);\n"
+         << "}\n"
+         << "static bool pc_eof(const char* name) {\n"
+         << "    FILE* fp = pc_get_file(name);\n"
+         << "    int c = fgetc(fp);\n"
+         << "    if (c == EOF) return true;\n"
+         << "    ungetc(c, fp);\n"
+         << "    return false;\n"
+         << "}\n"
          << "static void pc_cleanup(void) {\n"
+         << "    while (pc_files_head) {\n"
+         << "        PC_File* next = pc_files_head->next;\n"
+         << "        fclose(pc_files_head->fp);\n"
+         << "        free(pc_files_head);\n"
+         << "        pc_files_head = next;\n"
+         << "    }\n"
          << "    while (pc_gc_head) {\n"
          << "        PC_Node* next = pc_gc_head->next;\n"
          << "        free(pc_gc_head->ptr);\n"
@@ -227,13 +257,138 @@ void CodeGen::emitRuntimeHeaders() {
          << "static double pc_str_to_num(const char* s) { return atof(s); }\n\n";
 }
 
+void CodeGen::emitRecordDefinitions() {
+    for (const auto& kv : recordTypes_) {
+        const auto& rdef = kv.second;
+        out_ << "typedef struct " << cTypeName(rdef.name) << " {\n";
+        for (const auto& f : rdef.fields) {
+            out_ << "    " << cBaseType(f.type) << " " << cName(f.name) << ";\n";
+        }
+        out_ << "} " << cTypeName(rdef.name) << ";\n\n";
+    }
+}
+
+void CodeGen::emitFunctionPrototypes() {
+    for (const auto& kv : functions_) {
+        const auto& fn = kv.second;
+        std::string retType = fn.isFunction ? cBaseType(fn.returnType) : "void";
+        out_ << retType << " " << cName(fn.name) << "(";
+        if (fn.params.empty()) {
+            out_ << "void";
+        } else {
+            for (size_t i = 0; i < fn.params.size(); ++i) {
+                if (i > 0) out_ << ", ";
+                out_ << cBaseType(fn.params[i].type);
+                if (fn.params[i].isByRef) out_ << "*";
+                out_ << " " << cName(fn.params[i].name);
+            }
+        }
+        out_ << ");\n";
+    }
+    if (!functions_.empty()) out_ << "\n";
+}
+
+void CodeGen::emitFunctionDefinitions(const Block& program) {
+    insideFunction_ = true;
+    for (const auto& s : program) {
+        if (s->kind == Stmt::Kind::ProcedureDecl) {
+            auto& p = static_cast<const ProcedureDeclStmt&>(*s);
+            currentByRefParams_.clear();
+            for (const auto& param : p.params) {
+                if (param.isByRef) currentByRefParams_.insert(param.name);
+            }
+            out_ << "void " << cName(p.name) << "(";
+            if (p.params.empty()) out_ << "void";
+            else {
+                for (size_t i = 0; i < p.params.size(); ++i) {
+                    if (i > 0) out_ << ", ";
+                    out_ << cBaseType(p.params[i].type);
+                    if (p.params[i].isByRef) out_ << "*";
+                    out_ << " " << cName(p.params[i].name);
+                }
+            }
+            out_ << ") {\n";
+            emitIndented(p.body);
+            out_ << "}\n\n";
+            currentByRefParams_.clear();
+        } else if (s->kind == Stmt::Kind::FunctionDecl) {
+            auto& f = static_cast<const FunctionDeclStmt&>(*s);
+            currentByRefParams_.clear();
+            for (const auto& param : f.params) {
+                if (param.isByRef) currentByRefParams_.insert(param.name);
+            }
+            out_ << cBaseType(f.returnType) << " " << cName(f.name) << "(";
+            if (f.params.empty()) out_ << "void";
+            else {
+                for (size_t i = 0; i < f.params.size(); ++i) {
+                    if (i > 0) out_ << ", ";
+                    out_ << cBaseType(f.params[i].type);
+                    if (f.params[i].isByRef) out_ << "*";
+                    out_ << " " << cName(f.params[i].name);
+                }
+            }
+            out_ << ") {\n";
+            emitIndented(f.body);
+            out_ << "}\n\n";
+            currentByRefParams_.clear();
+        }
+    }
+    insideFunction_ = false;
+}
+
+std::string CodeGen::generate(const Block& program) {
+    emitRuntimeHeaders();
+    emitRecordDefinitions();
+    emitFunctionPrototypes();
+    emitFunctionDefinitions(program);
+
+    // Global arrays are emitted at file scope
+    bool hasArrays = false;
+    for (const auto& v : vars_) {
+        if (v.second.isArray) {
+            hasArrays = true;
+            long long n1 = (v.second.upper1 - v.second.lower1 + 1);
+            if (v.second.dims == 1) {
+                out_ << "static " << cBaseType(v.second) << " " << cName(v.first)
+                     << "[" << n1 << "];\n";
+            } else {
+                long long n2 = (v.second.upper2 - v.second.lower2 + 1);
+                out_ << "static " << cBaseType(v.second) << " " << cName(v.first)
+                     << "[" << n1 << "][" << n2 << "];\n";
+            }
+        }
+    }
+    if (hasArrays) out_ << "\n";
+
+    out_ << "int main(void) {\n";
+    indent_ = 1;
+
+    // Scalar declarations inside main()
+    for (const auto& v : vars_) {
+        if (!v.second.isArray) {
+            line(cBaseType(v.second) + " " + cName(v.first) + " = " + zeroValue(v.second) + ";");
+        }
+    }
+    if (!vars_.empty()) out_ << "\n";
+
+    emitBlock(program);
+    line("pc_cleanup();");
+    line("return 0;");
+    out_ << "}\n";
+    return out_.str();
+}
+
 void CodeGen::emitBlock(const Block& block) {
-    for (const auto& s : block) emitStmt(*s);
+    for (const auto& s : block) {
+        if (s->kind != Stmt::Kind::ProcedureDecl && s->kind != Stmt::Kind::FunctionDecl && s->kind != Stmt::Kind::TypeDecl) {
+            emitStmt(*s);
+        }
+    }
 }
 
 void CodeGen::emitIndented(const Block& block) {
     ++indent_;
-    emitBlock(block);
+    for (const auto& s : block) emitStmt(*s);
     --indent_;
 }
 
@@ -258,26 +413,118 @@ std::string CodeGen::arrayOffset(const std::string& name, const std::vector<Expr
     return s;
 }
 
+std::string CodeGen::lvalueExpr(const Expr& e) {
+    if (e.kind == Expr::Kind::Var) {
+        std::string name = static_cast<const VarExpr&>(e).name;
+        if (currentByRefParams_.find(name) != currentByRefParams_.end()) {
+            return "(*" + cName(name) + ")";
+        }
+        return cName(name);
+    }
+    if (e.kind == Expr::Kind::MemberAccess) {
+        auto& m = static_cast<const MemberAccessExpr&>(e);
+        return lvalueExpr(*m.target) + "." + cName(m.field);
+    }
+    if (e.kind == Expr::Kind::ArrayAccess) {
+        auto& a = static_cast<const ArrayAccessExpr&>(e);
+        if (a.target) {
+            std::string s = lvalueExpr(*a.target);
+            for (auto& idx : a.indices) {
+                s += "[" + expr(*idx) + "]";
+            }
+            return s;
+        }
+        return cName(a.name) + arrayOffset(a.name, a.indices);
+    }
+    return expr(e);
+}
+
 void CodeGen::emitStmt(const Stmt& s) {
     switch (s.kind) {
-        case Stmt::Kind::Declare:
+        case Stmt::Kind::TypeDecl:
+        case Stmt::Kind::ProcedureDecl:
+        case Stmt::Kind::FunctionDecl:
             break;
+
+        case Stmt::Kind::Declare: {
+            auto& d = static_cast<const DeclareStmt&>(s);
+            // Local declarations inside procedures/functions
+            if (insideFunction_) {
+                if (d.declaredType.isArray) {
+                    long long n1 = (d.declaredType.upper1 - d.declaredType.lower1 + 1);
+                    if (d.declaredType.dims == 1) {
+                        line(cBaseType(d.declaredType) + " " + cName(d.name) + "[" + std::to_string(n1) + "];");
+                    } else {
+                        long long n2 = (d.declaredType.upper2 - d.declaredType.lower2 + 1);
+                        line(cBaseType(d.declaredType) + " " + cName(d.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                    }
+                } else {
+                    line(cBaseType(d.declaredType) + " " + cName(d.name) + " = " + zeroValue(d.declaredType) + ";");
+                }
+            }
+            break;
+        }
+
         case Stmt::Kind::Assign: {
             auto& a = static_cast<const AssignStmt&>(s);
-            line(cName(a.name) + " = " + expr(*a.value) + ";");
+            std::string lhs = cName(a.name);
+            if (currentByRefParams_.find(a.name) != currentByRefParams_.end()) {
+                lhs = "(*" + lhs + ")";
+            }
+            line(lhs + " = " + expr(*a.value) + ";");
             break;
         }
+
         case Stmt::Kind::ArrayAssign: {
             auto& a = static_cast<const ArrayAssignStmt&>(s);
-            line(cName(a.name) + arrayOffset(a.name, a.indices) + " = " + expr(*a.value) + ";");
+            if (a.target) {
+                std::string s = lvalueExpr(*a.target);
+                for (auto& idx : a.indices) s += "[" + expr(*idx) + "]";
+                line(s + " = " + expr(*a.value) + ";");
+            } else {
+                line(cName(a.name) + arrayOffset(a.name, a.indices) + " = " + expr(*a.value) + ";");
+            }
             break;
         }
+
+        case Stmt::Kind::MemberAssign: {
+            auto& m = static_cast<const MemberAssignStmt&>(s);
+            line(lvalueExpr(*m.target) + "." + cName(m.field) + " = " + expr(*m.value) + ";");
+            break;
+        }
+
+        case Stmt::Kind::Call: {
+            auto& c = static_cast<const CallStmt&>(s);
+            std::string callStr = cName(c.name) + "(";
+            auto it = functions_.find(c.name);
+            for (size_t i = 0; i < c.args.size(); ++i) {
+                if (i > 0) callStr += ", ";
+                if (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef) {
+                    callStr += "&" + lvalueExpr(*c.args[i]);
+                } else {
+                    callStr += expr(*c.args[i]);
+                }
+            }
+            callStr += ");";
+            line(callStr);
+            break;
+        }
+
+        case Stmt::Kind::Return: {
+            auto& r = static_cast<const ReturnStmt&>(s);
+            if (r.value) line("return " + expr(*r.value) + ";");
+            else line("return;");
+            break;
+        }
+
         case Stmt::Kind::Output:
             emitOutput(static_cast<const OutputStmt&>(s));
             break;
+
         case Stmt::Kind::Input:
             emitInput(static_cast<const InputStmt&>(s));
             break;
+
         case Stmt::Kind::If: {
             auto& i = static_cast<const IfStmt&>(s);
             line("if (" + expr(*i.cond) + ") {");
@@ -289,6 +536,7 @@ void CodeGen::emitStmt(const Stmt& s) {
             line("}");
             break;
         }
+
         case Stmt::Kind::While: {
             auto& w = static_cast<const WhileStmt&>(s);
             line("while (" + expr(*w.cond) + ") {");
@@ -296,9 +544,83 @@ void CodeGen::emitStmt(const Stmt& s) {
             line("}");
             break;
         }
+
         case Stmt::Kind::For:
             emitFor(static_cast<const ForStmt&>(s));
             break;
+
+        case Stmt::Kind::Case:
+            emitCase(static_cast<const CaseStmt&>(s));
+            break;
+
+        case Stmt::Kind::OpenFile: {
+            auto& o = static_cast<const OpenFileStmt&>(s);
+            line("pc_open_file(" + expr(*o.filename) + ", \"" + o.mode + "\");");
+            break;
+        }
+
+        case Stmt::Kind::CloseFile: {
+            auto& cf = static_cast<const CloseFileStmt&>(s);
+            line("pc_close_file(" + expr(*cf.filename) + ");");
+            break;
+        }
+
+        case Stmt::Kind::ReadFile: {
+            auto& rf = static_cast<const ReadFileStmt&>(s);
+            line(lvalueExpr(*rf.target) + " = pc_read_file_line(" + expr(*rf.filename) + ");");
+            break;
+        }
+
+        case Stmt::Kind::WriteFile: {
+            auto& wf = static_cast<const WriteFileStmt&>(s);
+            line("pc_write_file_line(" + expr(*wf.filename) + ", " + expr(*wf.value) + ");");
+            break;
+        }
+    }
+}
+
+void CodeGen::emitCase(const CaseStmt& c) {
+    std::string sel = expr(*c.selector);
+    if (c.selector->type.base == BaseType::Integer) {
+        line("switch (" + sel + ") {");
+        for (const auto& b : c.branches) {
+            for (const auto& v : b.values) {
+                line("case " + expr(*v) + ":");
+            }
+            ++indent_;
+            for (const auto& s : b.body) emitStmt(*s);
+            line("break;");
+            --indent_;
+        }
+        if (!c.otherwiseBlock.empty()) {
+            line("default:");
+            ++indent_;
+            for (const auto& s : c.otherwiseBlock) emitStmt(*s);
+            line("break;");
+            --indent_;
+        }
+        line("}");
+    } else {
+        bool first = true;
+        for (const auto& b : c.branches) {
+            std::string cond;
+            for (size_t i = 0; i < b.values.size(); ++i) {
+                if (i > 0) cond += " || ";
+                cond += "(strcmp(" + sel + ", " + expr(*b.values[i]) + ") == 0)";
+            }
+            if (first) {
+                line("if (" + cond + ") {");
+                first = false;
+            } else {
+                line("} else if (" + cond + ") {");
+            }
+            emitIndented(b.body);
+        }
+        if (!c.otherwiseBlock.empty()) {
+            line("} else {");
+            emitIndented(c.otherwiseBlock);
+        }
+        line("}");
     }
 }
 
@@ -330,9 +652,16 @@ void CodeGen::emitOutput(const OutputStmt& o) {
 }
 
 void CodeGen::emitInput(const InputStmt& in) {
-    std::string target = cName(in.name);
-    BaseType b = varMap_[in.name].base;
-    if (!in.indices.empty()) target += arrayOffset(in.name, in.indices);
+    std::string target;
+    BaseType b = BaseType::Integer;
+    if (in.target) {
+        target = lvalueExpr(*in.target);
+        b = in.target->type.base;
+    } else {
+        target = cName(in.name);
+        b = varMap_[in.name].base;
+        if (!in.indices.empty()) target += arrayOffset(in.name, in.indices);
+    }
 
     switch (b) {
         case BaseType::Integer:
@@ -356,6 +685,9 @@ void CodeGen::emitFor(const ForStmt& f) {
     int id = ++tempCounter_;
     std::string endVar = "tmp_end_" + std::to_string(id);
     std::string var = cName(f.var);
+    if (currentByRefParams_.find(f.var) != currentByRefParams_.end()) {
+        var = "(*" + var + ")";
+    }
 
     line("{");
     ++indent_;
@@ -391,11 +723,25 @@ std::string CodeGen::expr(const Expr& e) {
                 default:           return "false";
             }
         }
-        case Expr::Kind::Var:
-            return cName(static_cast<const VarExpr&>(e).name);
+        case Expr::Kind::Var: {
+            std::string name = static_cast<const VarExpr&>(e).name;
+            if (currentByRefParams_.find(name) != currentByRefParams_.end()) {
+                return "(*" + cName(name) + ")";
+            }
+            return cName(name);
+        }
         case Expr::Kind::ArrayAccess: {
             auto& a = static_cast<const ArrayAccessExpr&>(e);
+            if (a.target) {
+                std::string s = lvalueExpr(*a.target);
+                for (auto& idx : a.indices) s += "[" + expr(*idx) + "]";
+                return s;
+            }
             return cName(a.name) + arrayOffset(a.name, a.indices);
+        }
+        case Expr::Kind::MemberAccess: {
+            auto& m = static_cast<const MemberAccessExpr&>(e);
+            return lvalueExpr(*m.target) + "." + cName(m.field);
         }
         case Expr::Kind::Unary: {
             auto& u = static_cast<const UnaryExpr&>(e);
@@ -405,8 +751,25 @@ std::string CodeGen::expr(const Expr& e) {
             return binary(static_cast<const BinaryExpr&>(e));
         case Expr::Kind::Call:
             return call(static_cast<const CallExpr&>(e));
+        case Expr::Kind::UserCall:
+            return userCall(static_cast<const UserCallExpr&>(e));
     }
     return "";
+}
+
+std::string CodeGen::userCall(const UserCallExpr& c) {
+    std::string s = cName(c.callee) + "(";
+    auto it = functions_.find(c.callee);
+    for (size_t i = 0; i < c.args.size(); ++i) {
+        if (i > 0) s += ", ";
+        if (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef) {
+            s += "&" + lvalueExpr(*c.args[i]);
+        } else {
+            s += expr(*c.args[i]);
+        }
+    }
+    s += ")";
+    return s;
 }
 
 std::string CodeGen::call(const CallExpr& c) {
@@ -425,6 +788,8 @@ std::string CodeGen::call(const CallExpr& c) {
             return "pc_num_to_str_real(" + expr(*c.args[0]) + ")";
         case Tok::StrToNum:
             return "pc_str_to_num(" + expr(*c.args[0]) + ")";
+        case Tok::EofFunc:
+            return "pc_eof(" + expr(*c.args[0]) + ")";
         default:
             return "";
     }

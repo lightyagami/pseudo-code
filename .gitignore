@@ -6,6 +6,7 @@ fizzbuzz
 
 # Build artifacts & object files
 *.o
+*.d
 *.obj
 *.out
 *.exe

@@ -1,0 +1,37 @@
+DECLARE grade : INTEGER
+DECLARE letter : STRING
+
+FOR grade <- 1 TO 5
+    CASE OF grade
+        1, 2:
+            OUTPUT grade, ": Low"
+        3:
+            OUTPUT grade, ": Medium"
+        4, 5:
+            OUTPUT grade, ": High"
+        OTHERWISE:
+            OUTPUT grade, ": Unknown"
+    ENDCASE
+NEXT grade
+
+DECLARE color : STRING
+color <- "RED"
+
+CASE OF color
+    "RED":
+        OUTPUT "Stop"
+    "YELLOW":
+        OUTPUT "Caution"
+    "GREEN":
+        OUTPUT "Go"
+    OTHERWISE:
+        OUTPUT "Unknown color"
+ENDCASE
+
+color <- "PURPLE"
+CASE OF color
+    "RED", "BLUE":
+        OUTPUT "Primary"
+    OTHERWISE:
+        OUTPUT "Other color"
+ENDCASE
