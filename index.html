@@ -35,6 +35,9 @@
         <label for="preset-select">Preset:</label>
         <select id="preset-select">
           <option value="welcome">Welcome & Basic I/O</option>
+          <option value="linked_list">Data Structure: Linked List (Paper 4)</option>
+          <option value="binary_tree">Data Structure: Binary Tree (Paper 4)</option>
+          <option value="queue_stack">Data Structure: Queue & Stack (Paper 4)</option>
           <option value="paper4_array">Array-Returning Functions (Paper 4)</option>
           <option value="paper4_random_file">Direct Access Random Files (Paper 4)</option>
           <option value="oop_banking">OOP: Banking System (Paper 4)</option>
@@ -46,6 +49,17 @@
     </div>
 
     <div class="nav-right">
+      <button id="btn-share" class="nav-btn btn-outline" title="Copy shareable link to clipboard">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+        <span id="share-label">Share</span>
+      </button>
+
       <button id="btn-check" class="nav-btn btn-outline" title="Perform syntax & semantic type checking">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"></circle>
@@ -72,6 +86,10 @@
       <span class="hint-key">Tab</span> <span class="hint-text">Indent (4 spaces)</span>
     </div>
     <div class="sub-right">
+      <button id="btn-export-pseudo" class="sub-btn" title="Download current code as .pseudo">Export .pseudo</button>
+      <button id="btn-export-py" class="sub-btn" title="Download transpiled Python code">Export .py</button>
+      <button id="btn-export-c" class="sub-btn" title="Download compiled C code">Export .c</button>
+      <button id="btn-format" class="sub-btn" title="Format code to canonical Cambridge style">Format</button>
       <button id="btn-clear" class="sub-btn">Clear</button>
       <button id="btn-copy-code" class="sub-btn">Copy Code</button>
     </div>

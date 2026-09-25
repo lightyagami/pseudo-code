@@ -21,6 +21,247 @@ ELSE
 ENDIF
 `,
 
+    linked_list: `// Cambridge 9618 Paper 4: Array-Based Linked List with Free List Pointer
+TYPE ListNode
+    DECLARE Data : INTEGER
+    DECLARE NextPointer : INTEGER
+ENDTYPE
+
+DECLARE List : ARRAY[1:10] OF ListNode
+DECLARE HeadPointer : INTEGER
+DECLARE FreeListPointer : INTEGER
+DECLARE i : INTEGER
+
+PROCEDURE InitialiseList()
+    HeadPointer <- -1
+    FreeListPointer <- 1
+    FOR i <- 1 TO 9
+        List[i].NextPointer <- i + 1
+        List[i].Data <- 0
+    NEXT i
+    List[10].NextPointer <- -1
+    List[10].Data <- 0
+ENDPROCEDURE
+
+PROCEDURE InsertNode(NewItem : INTEGER)
+    DECLARE NewNodeIndex : INTEGER
+    DECLARE PreviousNode : INTEGER
+    DECLARE CurrentNode : INTEGER
+
+    IF FreeListPointer <> -1 THEN
+        NewNodeIndex <- FreeListPointer
+        FreeListPointer <- List[FreeListPointer].NextPointer
+        List[NewNodeIndex].Data <- NewItem
+        List[NewNodeIndex].NextPointer <- -1
+
+        PreviousNode <- -1
+        CurrentNode <- HeadPointer
+
+        WHILE CurrentNode <> -1 AND List[CurrentNode].Data < NewItem
+            PreviousNode <- CurrentNode
+            CurrentNode <- List[CurrentNode].NextPointer
+        ENDWHILE
+
+        IF PreviousNode = -1 THEN
+            List[NewNodeIndex].NextPointer <- HeadPointer
+            HeadPointer <- NewNodeIndex
+        ELSE
+            List[NewNodeIndex].NextPointer <- CurrentNode
+            List[PreviousNode].NextPointer <- NewNodeIndex
+        ENDIF
+    ELSE
+        OUTPUT "Error: List is full"
+    ENDIF
+ENDPROCEDURE
+
+PROCEDURE PrintList()
+    DECLARE Current : INTEGER
+    Current <- HeadPointer
+    OUTPUT "--- Linked List Contents (Sorted) ---"
+    WHILE Current <> -1
+        OUTPUT "Node [Index ", Current, "]: Data = ", List[Current].Data, ", Next = ", List[Current].NextPointer
+        Current <- List[Current].NextPointer
+    ENDWHILE
+ENDPROCEDURE
+
+InitialiseList()
+OUTPUT "Inserting items: 45, 12, 89, 34, 2"
+InsertNode(45)
+InsertNode(12)
+InsertNode(89)
+InsertNode(34)
+InsertNode(2)
+PrintList()
+`,
+
+    binary_tree: `// Cambridge 9618 Paper 4: Array-Based Binary Search Tree (BST)
+TYPE TreeNode
+    DECLARE LeftPointer  : INTEGER
+    DECLARE Data         : INTEGER
+    DECLARE RightPointer : INTEGER
+ENDTYPE
+
+DECLARE Tree : ARRAY[1:10] OF TreeNode
+DECLARE RootPointer : INTEGER
+DECLARE FreePointer : INTEGER
+DECLARE i : INTEGER
+
+PROCEDURE InitialiseTree()
+    RootPointer <- -1
+    FreePointer <- 1
+    FOR i <- 1 TO 9
+        Tree[i].LeftPointer <- i + 1
+        Tree[i].Data <- 0
+        Tree[i].RightPointer <- -1
+    NEXT i
+    Tree[10].LeftPointer <- -1
+    Tree[10].Data <- 0
+    Tree[10].RightPointer <- -1
+ENDPROCEDURE
+
+PROCEDURE InsertNode(NewItem : INTEGER)
+    DECLARE NewNodeIndex : INTEGER
+    DECLARE CurrentPointer : INTEGER
+    DECLARE PreviousPointer : INTEGER
+    DECLARE TurnedLeft : BOOLEAN
+
+    IF FreePointer <> -1 THEN
+        NewNodeIndex <- FreePointer
+        FreePointer <- Tree[FreePointer].LeftPointer
+        Tree[NewNodeIndex].LeftPointer <- -1
+        Tree[NewNodeIndex].Data <- NewItem
+        Tree[NewNodeIndex].RightPointer <- -1
+
+        IF RootPointer = -1 THEN
+            RootPointer <- NewNodeIndex
+        ELSE
+            CurrentPointer <- RootPointer
+            TurnedLeft <- FALSE
+            WHILE CurrentPointer <> -1
+                PreviousPointer <- CurrentPointer
+                IF NewItem < Tree[CurrentPointer].Data THEN
+                    TurnedLeft <- TRUE
+                    CurrentPointer <- Tree[CurrentPointer].LeftPointer
+                ELSE
+                    TurnedLeft <- FALSE
+                    CurrentPointer <- Tree[CurrentPointer].RightPointer
+                ENDIF
+            ENDWHILE
+
+            IF TurnedLeft = TRUE THEN
+                Tree[PreviousPointer].LeftPointer <- NewNodeIndex
+            ELSE
+                Tree[PreviousPointer].RightPointer <- NewNodeIndex
+            ENDIF
+        ENDIF
+    ELSE
+        OUTPUT "Error: Tree is full"
+    ENDIF
+ENDPROCEDURE
+
+PROCEDURE InOrderTraversal(Pointer : INTEGER)
+    IF Pointer <> -1 THEN
+        InOrderTraversal(Tree[Pointer].LeftPointer)
+        OUTPUT "Value: ", Tree[Pointer].Data, " [at index ", Pointer, "]"
+        InOrderTraversal(Tree[Pointer].RightPointer)
+    ENDIF
+ENDPROCEDURE
+
+InitialiseTree()
+OUTPUT "Inserting items: 50, 25, 75, 10, 30, 60, 85"
+InsertNode(50)
+InsertNode(25)
+InsertNode(75)
+InsertNode(10)
+InsertNode(30)
+InsertNode(60)
+InsertNode(85)
+
+OUTPUT ""
+OUTPUT "--- In-Order Traversal (Sorted Output) ---"
+InOrderTraversal(RootPointer)
+`,
+
+    queue_stack: `// Cambridge 9618 Paper 4: Stack and Linear Queue Implementation
+DECLARE Stack : ARRAY[1:5] OF INTEGER
+DECLARE TopOfStack : INTEGER
+DECLARE MaxStack : INTEGER
+MaxStack <- 5
+TopOfStack <- 0
+
+PROCEDURE Push(Item : INTEGER)
+    IF TopOfStack = MaxStack THEN
+        OUTPUT "Stack Overflow: Cannot push ", Item
+    ELSE
+        TopOfStack <- TopOfStack + 1
+        Stack[TopOfStack] <- Item
+        OUTPUT "Pushed: ", Item, " (Top at ", TopOfStack, ")"
+    ENDIF
+ENDPROCEDURE
+
+FUNCTION Pop() RETURNS INTEGER
+    DECLARE PoppedValue : INTEGER
+    IF TopOfStack = 0 THEN
+        OUTPUT "Stack Underflow: Stack is empty"
+        RETURN -1
+    ELSE
+        PoppedValue <- Stack[TopOfStack]
+        TopOfStack <- TopOfStack - 1
+        RETURN PoppedValue
+    ENDIF
+ENDFUNCTION
+
+DECLARE Queue : ARRAY[1:5] OF STRING
+DECLARE HeadPointer : INTEGER
+DECLARE TailPointer : INTEGER
+DECLARE MaxQueue : INTEGER
+MaxQueue <- 5
+HeadPointer <- -1
+TailPointer <- 0
+
+PROCEDURE Enqueue(Item : STRING)
+    IF TailPointer = MaxQueue THEN
+        OUTPUT "Queue Full: Cannot enqueue '", Item, "'"
+    ELSE
+        TailPointer <- TailPointer + 1
+        Queue[TailPointer] <- Item
+        IF HeadPointer = -1 THEN
+            HeadPointer <- 1
+        ENDIF
+        OUTPUT "Enqueued: '", Item, "' (Tail at ", TailPointer, ")"
+    ENDIF
+ENDPROCEDURE
+
+FUNCTION Dequeue() RETURNS STRING
+    DECLARE DequeuedItem : STRING
+    IF HeadPointer = -1 OR HeadPointer > TailPointer THEN
+        OUTPUT "Queue Empty: Cannot dequeue"
+        RETURN ""
+    ELSE
+        DequeuedItem <- Queue[HeadPointer]
+        HeadPointer <- HeadPointer + 1
+        RETURN DequeuedItem
+    ENDIF
+ENDFUNCTION
+
+OUTPUT "=== STACK DEMO ==="
+Push(100)
+Push(200)
+OUTPUT "Popped from stack: ", Pop()
+Push(300)
+OUTPUT "Popped from stack: ", Pop()
+OUTPUT "Popped from stack: ", Pop()
+
+OUTPUT ""
+OUTPUT "=== QUEUE DEMO ==="
+Enqueue("First")
+Enqueue("Second")
+OUTPUT "Dequeued: ", Dequeue()
+Enqueue("Third")
+OUTPUT "Dequeued: ", Dequeue()
+OUTPUT "Dequeued: ", Dequeue()
+`,
+
     paper4_array: `// Cambridge 9618 Paper 4: Array-Returning Functions
 FUNCTION GenerateSquares(limit : INTEGER) RETURNS ARRAY[1:5] OF INTEGER
     DECLARE arr : ARRAY[1:5] OF INTEGER
@@ -414,6 +655,78 @@ OUTPUT "Liftoff!"
     });
   });
 
+  const btnShare = document.getElementById('btn-share');
+  const shareLabel = document.getElementById('share-label');
+  const btnExportPseudo = document.getElementById('btn-export-pseudo');
+  const btnExportPy = document.getElementById('btn-export-py');
+  const btnExportC = document.getElementById('btn-export-c');
+  const btnFormat = document.getElementById('btn-format');
+
+  function downloadFile(filename, text) {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function encodeCodeForUrl(code) {
+    try {
+      return encodeURIComponent(btoa(unescape(encodeURIComponent(code))));
+    } catch (e) {
+      return encodeURIComponent(code);
+    }
+  }
+
+  function decodeCodeFromUrl(hash) {
+    try {
+      return decodeURIComponent(escape(atob(decodeURIComponent(hash))));
+    } catch (e) {
+      return decodeURIComponent(hash);
+    }
+  }
+
+  btnShare.addEventListener('click', () => {
+    const code = codeEditor.value;
+    const encoded = encodeCodeForUrl(code);
+    const url = window.location.origin + window.location.pathname + '#code=' + encoded;
+    window.history.replaceState(null, '', url);
+    navigator.clipboard.writeText(url).then(() => {
+      const prev = shareLabel ? shareLabel.textContent : "Share";
+      if (shareLabel) shareLabel.textContent = "Copied!";
+      setTimeout(() => { if (shareLabel) shareLabel.textContent = prev; }, 1800);
+    });
+  });
+
+  btnExportPseudo.addEventListener('click', () => {
+    downloadFile('main.pseudo', codeEditor.value);
+  });
+
+  btnExportPy.addEventListener('click', () => {
+    if (!wasmModule) return;
+    const py = wasmModule.wasm_emit_py(codeEditor.value);
+    downloadFile('main.py', py);
+  });
+
+  btnExportC.addEventListener('click', () => {
+    if (!wasmModule) return;
+    const c = wasmModule.wasm_emit_c(codeEditor.value);
+    downloadFile('main.c', c);
+  });
+
+  if (btnFormat) {
+    btnFormat.addEventListener('click', () => {
+      if (!wasmModule || !wasmModule.wasm_format) return;
+      const formatted = wasmModule.wasm_format(codeEditor.value);
+      codeEditor.value = formatted;
+      updateLineNumbers();
+    });
+  }
+
   // Editor shortcuts: Tab and Ctrl+Enter / Cmd+Enter
   codeEditor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
@@ -439,9 +752,21 @@ OUTPUT "Liftoff!"
         wasm_dump_bytecode: Module.cwrap('wasm_dump_bytecode', 'string', ['string']),
         wasm_check: Module.cwrap('wasm_check', 'string', ['string']),
         wasm_c_to_pseudo: Module.cwrap('wasm_c_to_pseudo', 'string', ['string']),
+        wasm_format: Module.cwrap('wasm_format', 'string', ['string']),
       };
       setStatus('Ready', 'ready');
-      loadPreset('welcome');
+
+      // Check if URL has #code=
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#code=')) {
+        const decoded = decodeCodeFromUrl(hash.substring(6));
+        codeEditor.value = decoded;
+        updateLineNumbers();
+        clearOutputs();
+        runCurrentTab();
+      } else {
+        loadPreset('welcome');
+      }
     }).catch(err => {
       displayOutput("Failed to load WebAssembly module: " + err);
       setStatus('Error', 'error');
