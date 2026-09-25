@@ -234,7 +234,7 @@ StmtPtr Parser::parseClassDecl() {
     int line = previous().line, col = previous().col;
     const Token& name = expect(Tok::Ident, "class name");
     std::string superClass;
-    if (match(Tok::Inherits)) {
+    if (match(Tok::Inherits) || match(Tok::Extends)) {
         const Token& sname = expect(Tok::Ident, "super class name");
         superClass = sname.lexeme;
     }
@@ -249,6 +249,8 @@ StmtPtr Parser::parseClassDecl() {
         bool isPrivate = false;
         if (match(Tok::Private)) {
             isPrivate = true;
+        } else if (match(Tok::Protected)) {
+            isPrivate = false;
         } else {
             match(Tok::Public);
         }
@@ -802,7 +804,7 @@ StmtPtr Parser::parseWhile() {
     int line = previous().line, col = previous().col;
     auto s = std::make_unique<WhileStmt>(line, col);
     s->cond = parseExpr();
-    expect(Tok::Do, "'DO'");
+    match(Tok::Do);
     expect(Tok::Newline, "end of line");
     skipNewlines();
 

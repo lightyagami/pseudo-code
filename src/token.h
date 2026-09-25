@@ -10,7 +10,7 @@ enum class Tok {
     Declare, Constant, Integer, Real, Boolean, String, Char, Array, Of,
     Type, EndType,
     // OOP Keywords
-    Class, EndClass, Inherits, Super, New, Public, Private,
+    Class, EndClass, Inherits, Extends, Super, New, Public, Private, Protected,
     // Procedures & Functions
     Procedure, EndProcedure, Function, EndFunction, Returns, Return, Call, ByVal, ByRef,
     // Control Flow
@@ -49,8 +49,8 @@ static const std::unordered_map<std::string, Tok> kKeywords = {
     {"ARRAY", Tok::Array}, {"OF", Tok::Of},
     {"TYPE", Tok::Type}, {"ENDTYPE", Tok::EndType},
     {"CLASS", Tok::Class}, {"ENDCLASS", Tok::EndClass},
-    {"INHERITS", Tok::Inherits}, {"SUPER", Tok::Super},
-    {"NEW", Tok::New}, {"PUBLIC", Tok::Public}, {"PRIVATE", Tok::Private},
+    {"INHERITS", Tok::Inherits}, {"EXTENDS", Tok::Extends}, {"SUPER", Tok::Super},
+    {"NEW", Tok::New}, {"PUBLIC", Tok::Public}, {"PRIVATE", Tok::Private}, {"PROTECTED", Tok::Protected},
     {"PROCEDURE", Tok::Procedure}, {"ENDPROCEDURE", Tok::EndProcedure},
     {"FUNCTION", Tok::Function}, {"ENDFUNCTION", Tok::EndFunction},
     {"RETURNS", Tok::Returns}, {"RETURN", Tok::Return}, {"CALL", Tok::Call},

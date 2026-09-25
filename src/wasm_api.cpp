@@ -57,26 +57,28 @@ const char* wasm_run_vm(const char* source, const char* stdin_input) {
     std::string inputStr = stdin_input ? stdin_input : "";
     StreamRedirect redir(inputStr);
 
-    Diagnostics diag("<playground>", source);
-    std::vector<Token> tokens = Lexer(source, diag).tokenize();
-    Block program = Parser(tokens, diag).parseProgram();
-
-    Sema sema(diag);
-    if (diag.errorCount() == 0) {
-        sema.run(program);
-    }
-
-    if (diag.errorCount() > 0) {
-        g_result = redir.errStream.str();
-        return g_result.c_str();
-    }
-
     try {
+        Diagnostics diag("<playground>", source);
+        std::vector<Token> tokens = Lexer(source, diag).tokenize();
+        Block program = Parser(tokens, diag).parseProgram();
+
+        Sema sema(diag);
+        if (diag.errorCount() == 0) {
+            sema.run(program);
+        }
+
+        if (diag.errorCount() > 0) {
+            g_result = redir.errStream.str();
+            return g_result.c_str();
+        }
+
         Chunk chunk = BytecodeCompiler(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).compile(program);
         VM vm(chunk.varDescs, sema.recordTypes());
         vm.run(chunk);
     } catch (const std::exception& ex) {
         std::cerr << "Internal error: " << ex.what() << "\n";
+    } catch (...) {
+        std::cerr << "Internal error: unknown exception\n";
     }
 
     g_result = redir.outStream.str() + redir.errStream.str();
@@ -91,24 +93,26 @@ const char* wasm_emit_c(const char* source) {
     }
     StreamRedirect redir("");
 
-    Diagnostics diag("<playground>", source);
-    std::vector<Token> tokens = Lexer(source, diag).tokenize();
-    Block program = Parser(tokens, diag).parseProgram();
-
-    Sema sema(diag);
-    if (diag.errorCount() == 0) {
-        sema.run(program);
-    }
-
-    if (diag.errorCount() > 0) {
-        g_result = redir.errStream.str();
-        return g_result.c_str();
-    }
-
     try {
+        Diagnostics diag("<playground>", source);
+        std::vector<Token> tokens = Lexer(source, diag).tokenize();
+        Block program = Parser(tokens, diag).parseProgram();
+
+        Sema sema(diag);
+        if (diag.errorCount() == 0) {
+            sema.run(program);
+        }
+
+        if (diag.errorCount() > 0) {
+            g_result = redir.errStream.str();
+            return g_result.c_str();
+        }
+
         g_result = CodeGen(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).generate(program);
     } catch (const std::exception& ex) {
         g_result = std::string("Error generating C: ") + ex.what();
+    } catch (...) {
+        g_result = "Error generating C: unknown internal error";
     }
     return g_result.c_str();
 }
@@ -121,24 +125,26 @@ const char* wasm_emit_py(const char* source) {
     }
     StreamRedirect redir("");
 
-    Diagnostics diag("<playground>", source);
-    std::vector<Token> tokens = Lexer(source, diag).tokenize();
-    Block program = Parser(tokens, diag).parseProgram();
-
-    Sema sema(diag);
-    if (diag.errorCount() == 0) {
-        sema.run(program);
-    }
-
-    if (diag.errorCount() > 0) {
-        g_result = redir.errStream.str();
-        return g_result.c_str();
-    }
-
     try {
+        Diagnostics diag("<playground>", source);
+        std::vector<Token> tokens = Lexer(source, diag).tokenize();
+        Block program = Parser(tokens, diag).parseProgram();
+
+        Sema sema(diag);
+        if (diag.errorCount() == 0) {
+            sema.run(program);
+        }
+
+        if (diag.errorCount() > 0) {
+            g_result = redir.errStream.str();
+            return g_result.c_str();
+        }
+
         g_result = PyCodeGen(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).generate(program);
     } catch (const std::exception& ex) {
         g_result = std::string("Error generating Python: ") + ex.what();
+    } catch (...) {
+        g_result = "Error generating Python: unknown internal error";
     }
     return g_result.c_str();
 }
@@ -151,26 +157,28 @@ const char* wasm_dump_bytecode(const char* source) {
     }
     StreamRedirect redir("");
 
-    Diagnostics diag("<playground>", source);
-    std::vector<Token> tokens = Lexer(source, diag).tokenize();
-    Block program = Parser(tokens, diag).parseProgram();
-
-    Sema sema(diag);
-    if (diag.errorCount() == 0) {
-        sema.run(program);
-    }
-
-    if (diag.errorCount() > 0) {
-        g_result = redir.errStream.str();
-        return g_result.c_str();
-    }
-
     try {
+        Diagnostics diag("<playground>", source);
+        std::vector<Token> tokens = Lexer(source, diag).tokenize();
+        Block program = Parser(tokens, diag).parseProgram();
+
+        Sema sema(diag);
+        if (diag.errorCount() == 0) {
+            sema.run(program);
+        }
+
+        if (diag.errorCount() > 0) {
+            g_result = redir.errStream.str();
+            return g_result.c_str();
+        }
+
         Chunk chunk = BytecodeCompiler(sema.variables(), sema.recordTypes(), sema.functions(), sema.classTypes()).compile(program);
         dumpBytecode(chunk, "<playground>");
         g_result = redir.outStream.str();
     } catch (const std::exception& ex) {
         g_result = std::string("Error compiling bytecode: ") + ex.what();
+    } catch (...) {
+        g_result = "Error compiling bytecode: unknown internal error";
     }
     return g_result.c_str();
 }
@@ -183,19 +191,25 @@ const char* wasm_check(const char* source) {
     }
     StreamRedirect redir("");
 
-    Diagnostics diag("<playground>", source);
-    std::vector<Token> tokens = Lexer(source, diag).tokenize();
-    Block program = Parser(tokens, diag).parseProgram();
+    try {
+        Diagnostics diag("<playground>", source);
+        std::vector<Token> tokens = Lexer(source, diag).tokenize();
+        Block program = Parser(tokens, diag).parseProgram();
 
-    Sema sema(diag);
-    if (diag.errorCount() == 0) {
-        sema.run(program);
-    }
+        Sema sema(diag);
+        if (diag.errorCount() == 0) {
+            sema.run(program);
+        }
 
-    if (diag.errorCount() > 0) {
-        g_result = redir.errStream.str();
-    } else {
-        g_result = "OK: Syntax and semantic analysis passed with 0 errors.";
+        if (diag.errorCount() > 0) {
+            g_result = redir.errStream.str();
+        } else {
+            g_result = "OK: Syntax and semantic analysis passed with 0 errors.";
+        }
+    } catch (const std::exception& ex) {
+        g_result = std::string("Error checking program: ") + ex.what();
+    } catch (...) {
+        g_result = "Error checking program: unknown internal error";
     }
     return g_result.c_str();
 }
