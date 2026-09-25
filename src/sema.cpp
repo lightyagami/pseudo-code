@@ -529,7 +529,14 @@ void Sema::checkStmt(Stmt& s) {
             }
             TypeInfo value = typeOf(*a.value);
             if (sym && sym->type.isArray) {
-                err(a.line, a.col, "cannot assign directly to array '" + a.name + "'; index required");
+                if (value.isArray) {
+                    if (!assignable(sym->type, value)) {
+                        err(a.line, a.col, "cannot assign " + typeString(value) + " to " +
+                            typeString(sym->type) + " array '" + a.name + "'");
+                    }
+                } else {
+                    err(a.line, a.col, "cannot assign directly to array '" + a.name + "'; index required");
+                }
             } else if (sym && value.base != BaseType::Error && !assignable(sym->type, value)) {
                 err(a.line, a.col, "cannot assign " + typeString(value) + " to " +
                     typeString(sym->type) + " variable '" + a.name + "'");
@@ -746,6 +753,38 @@ void Sema::checkStmt(Stmt& s) {
             TypeInfo val = typeOf(*wf.value);
             if (val.isArray || val.base == BaseType::Record) {
                 err(wf.value->line, wf.value->col, "WRITEFILE value must be a scalar expression");
+            }
+            break;
+        }
+
+        case Stmt::Kind::Seek: {
+            auto& sk = static_cast<SeekStmt&>(s);
+            requireType(*sk.filename, typeOf(*sk.filename), BaseType::String, "SEEK filename");
+            requireType(*sk.address, typeOf(*sk.address), BaseType::Integer, "SEEK address");
+            break;
+        }
+
+        case Stmt::Kind::GetRecord: {
+            auto& gr = static_cast<GetRecordStmt&>(s);
+            requireType(*gr.filename, typeOf(*gr.filename), BaseType::String, "GETRECORD filename");
+            TypeInfo tgt = typeOf(*gr.target);
+            if (tgt.isArray) {
+                err(gr.target->line, gr.target->col, "GETRECORD target cannot be an array");
+            }
+            if (gr.target->kind != Expr::Kind::Var &&
+                gr.target->kind != Expr::Kind::ArrayAccess &&
+                gr.target->kind != Expr::Kind::MemberAccess) {
+                err(gr.target->line, gr.target->col, "GETRECORD target must be a variable, array element, or record field");
+            }
+            break;
+        }
+
+        case Stmt::Kind::PutRecord: {
+            auto& pr = static_cast<PutRecordStmt&>(s);
+            requireType(*pr.filename, typeOf(*pr.filename), BaseType::String, "PUTRECORD filename");
+            TypeInfo val = typeOf(*pr.value);
+            if (val.isArray) {
+                err(pr.value->line, pr.value->col, "PUTRECORD value cannot be an array");
             }
             break;
         }

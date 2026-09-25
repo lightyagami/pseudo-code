@@ -191,6 +191,9 @@ enum class OpCode : uint8_t {
     OpReadFile,
     OpWriteFile,
     OpEof,
+    OpSeekFile,
+    OpGetRecord,
+    OpPutRecord,
 
     // Arithmetic
     OpAdd,

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
@@ -18,6 +19,13 @@ VM::~VM() {
 }
 
 void VM::closeAllFiles() {
+    for (auto& pair : randomFiles_) {
+        std::ofstream out(pair.second.path, std::ios::trunc);
+        for (const auto& l : pair.second.lines) {
+            out << l << "\n";
+        }
+    }
+    randomFiles_.clear();
     for (auto& pair : openFiles_) {
         if (pair.second) {
             fclose(pair.second);
@@ -648,6 +656,33 @@ int VM::run(const Chunk& chunk, bool isRepl) {
             case OpCode::OpOpenFile: {
                 const std::string& mode = chunk.constants[inst.a].asString();
                 std::string fname = pop().asString();
+                if (mode == "RANDOM") {
+                    auto rit = randomFiles_.find(fname);
+                    if (rit != randomFiles_.end()) {
+                        std::ofstream out(fname, std::ios::trunc);
+                        for (const auto& l : rit->second.lines) out << l << "\n";
+                        randomFiles_.erase(rit);
+                    }
+                    auto oit = openFiles_.find(fname);
+                    if (oit != openFiles_.end()) {
+                        fclose(oit->second);
+                        openFiles_.erase(oit);
+                    }
+                    RandomFile rf;
+                    rf.path = fname;
+                    rf.currentRecord = 1;
+                    std::ifstream in(fname);
+                    if (in.is_open()) {
+                        std::string l;
+                        while (std::getline(in, l)) {
+                            if (!l.empty() && l.back() == '\r') l.pop_back();
+                            rf.lines.push_back(l);
+                        }
+                    }
+                    randomFiles_[fname] = std::move(rf);
+                    fileModes_[fname] = mode;
+                    break;
+                }
                 const char* fmode = "r";
                 if (mode == "WRITE") fmode = "w";
                 else if (mode == "APPEND") fmode = "a";
@@ -667,6 +702,16 @@ int VM::run(const Chunk& chunk, bool isRepl) {
 
             case OpCode::OpCloseFile: {
                 std::string fname = pop().asString();
+                auto rit = randomFiles_.find(fname);
+                if (rit != randomFiles_.end()) {
+                    std::ofstream out(fname, std::ios::trunc);
+                    for (const auto& l : rit->second.lines) {
+                        out << l << "\n";
+                    }
+                    randomFiles_.erase(rit);
+                    fileModes_.erase(fname);
+                    break;
+                }
                 auto it = openFiles_.find(fname);
                 if (it != openFiles_.end()) {
                     fclose(it->second);
@@ -734,6 +779,11 @@ int VM::run(const Chunk& chunk, bool isRepl) {
 
             case OpCode::OpEof: {
                 std::string fname = pop().asString();
+                auto rit = randomFiles_.find(fname);
+                if (rit != randomFiles_.end()) {
+                    push(Value::makeBool(rit->second.currentRecord > static_cast<int64_t>(rit->second.lines.size())));
+                    break;
+                }
                 auto it = openFiles_.find(fname);
                 if (it == openFiles_.end()) {
                     runtimeErr("File '" + fname + "' is not open", inst.line);
@@ -746,6 +796,149 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                     ungetc(ch, it->second);
                     push(Value::makeBool(false));
                 }
+                break;
+            }
+
+            case OpCode::OpSeekFile: {
+                int64_t addr = pop().asInt();
+                std::string fname = pop().asString();
+                auto rit = randomFiles_.find(fname);
+                if (rit == randomFiles_.end()) {
+                    runtimeErr("File '" + fname + "' is not open for RANDOM", inst.line);
+                    return 1;
+                }
+                rit->second.currentRecord = (addr < 1) ? 1 : addr;
+                break;
+            }
+
+            case OpCode::OpGetRecord: {
+                std::string fname = pop().asString();
+                auto rit = randomFiles_.find(fname);
+                if (rit == randomFiles_.end()) {
+                    runtimeErr("File '" + fname + "' is not open for RANDOM", inst.line);
+                    return 1;
+                }
+                std::string lineStr;
+                int64_t recIdx = rit->second.currentRecord;
+                if (recIdx > 0 && static_cast<size_t>(recIdx - 1) < rit->second.lines.size()) {
+                    lineStr = rit->second.lines[static_cast<size_t>(recIdx - 1)];
+                }
+                rit->second.currentRecord++;
+
+                BaseType targetBase = static_cast<BaseType>(inst.a);
+                if (targetBase == BaseType::Record) {
+                    std::string recName = chunk.constants[inst.b].asString();
+                    auto newRec = std::make_shared<RecordData>();
+                    newRec->typeName = recName;
+                    auto recIt = recordTypes_.find(recName);
+                    if (recIt != recordTypes_.end()) {
+                        const auto& rdef = recIt->second;
+                        std::vector<std::string> parts;
+                        size_t start = 0;
+                        while (start < lineStr.size()) {
+                            size_t p = lineStr.find('|', start);
+                            if (p == std::string::npos) {
+                                parts.push_back(lineStr.substr(start));
+                                break;
+                            } else {
+                                parts.push_back(lineStr.substr(start, p - start));
+                                start = p + 1;
+                            }
+                        }
+                        for (size_t i = 0; i < rdef.fields.size(); ++i) {
+                            std::string part = (i < parts.size()) ? parts[i] : "";
+                            const auto& fld = rdef.fields[i];
+                            Value fval;
+                            switch (fld.type.base) {
+                                case BaseType::Integer: {
+                                    char* end = nullptr;
+                                    fval = Value::makeInt(std::strtoll(part.c_str(), &end, 10));
+                                    break;
+                                }
+                                case BaseType::Real: {
+                                    char* end = nullptr;
+                                    fval = Value::makeReal(std::strtod(part.c_str(), &end));
+                                    break;
+                                }
+                                case BaseType::Boolean: {
+                                    std::string up = part;
+                                    for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                                    fval = Value::makeBool(up == "TRUE" || up == "1");
+                                    break;
+                                }
+                                case BaseType::String:
+                                default:
+                                    fval = Value::makeString(part);
+                                    break;
+                            }
+                            newRec->fields[fld.name] = fval;
+                        }
+                    }
+                    push(Value::makeRecord(newRec));
+                } else {
+                    switch (targetBase) {
+                        case BaseType::Integer: {
+                            char* end = nullptr;
+                            push(Value::makeInt(std::strtoll(lineStr.c_str(), &end, 10)));
+                            break;
+                        }
+                        case BaseType::Real: {
+                            char* end = nullptr;
+                            push(Value::makeReal(std::strtod(lineStr.c_str(), &end)));
+                            break;
+                        }
+                        case BaseType::Boolean: {
+                            std::string up = lineStr;
+                            for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                            push(Value::makeBool(up == "TRUE" || up == "1"));
+                            break;
+                        }
+                        case BaseType::String:
+                        default:
+                            push(Value::makeString(lineStr));
+                            break;
+                    }
+                }
+                break;
+            }
+
+            case OpCode::OpPutRecord: {
+                Value val = pop();
+                std::string fname = pop().asString();
+                auto rit = randomFiles_.find(fname);
+                if (rit == randomFiles_.end()) {
+                    runtimeErr("File '" + fname + "' is not open for RANDOM", inst.line);
+                    return 1;
+                }
+                std::string lineStr;
+                if (val.isRecord() && val.recVal) {
+                    auto recIt = recordTypes_.find(val.recVal->typeName);
+                    if (recIt != recordTypes_.end()) {
+                        const auto& rdef = recIt->second;
+                        for (size_t i = 0; i < rdef.fields.size(); ++i) {
+                            if (i > 0) lineStr += "|";
+                            auto fit = val.recVal->fields.find(rdef.fields[i].name);
+                            if (fit != val.recVal->fields.end()) {
+                                std::ostringstream ss;
+                                fit->second.print(ss);
+                                lineStr += ss.str();
+                            }
+                        }
+                    }
+                } else {
+                    std::ostringstream ss;
+                    val.print(ss);
+                    lineStr = ss.str();
+                }
+                int64_t recIdx = rit->second.currentRecord;
+                if (recIdx > 0) {
+                    size_t targetIdx = static_cast<size_t>(recIdx - 1);
+                    if (targetIdx >= rit->second.lines.size()) {
+                        rit->second.lines.resize(targetIdx + 1, "");
+                    }
+                    rit->second.lines[targetIdx] = lineStr;
+                }
+                rit->second.currentRecord++;
                 break;
             }
 

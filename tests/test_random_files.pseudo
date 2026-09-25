@@ -1,0 +1,39 @@
+TYPE Book
+    DECLARE Title : STRING
+    DECLARE Pages : INTEGER
+    DECLARE Rating : REAL
+ENDTYPE
+
+DECLARE b1 : Book
+DECLARE b2 : Book
+DECLARE r1 : Book
+DECLARE r2 : Book
+DECLARE fname : STRING
+
+fname <- "test_books.dat"
+
+b1.Title <- "The Hobbit"
+b1.Pages <- 310
+b1.Rating <- 4.8
+
+b2.Title <- "Clean Code"
+b2.Pages <- 464
+b2.Rating <- 4.5
+
+OPENFILE fname FOR RANDOM
+SEEK fname, 2
+PUTRECORD fname, b2
+SEEK fname, 1
+PUTRECORD fname, b1
+CLOSEFILE fname
+
+OPENFILE fname FOR RANDOM
+SEEK fname, 1
+GETRECORD fname, r1
+OUTPUT r1.Title, r1.Pages, r1.Rating
+
+GETRECORD fname, r2
+OUTPUT r2.Title, r2.Pages, r2.Rating
+
+OUTPUT "EOF:", EOF(fname)
+CLOSEFILE fname

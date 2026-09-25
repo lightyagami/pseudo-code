@@ -54,7 +54,46 @@ void PyCodeGen::emitImports() {
     line("");
     line("# --- Pseudoc Runtime Helpers ---");
     line("_pc_files = {}");
+    line("_pc_random_files = {}");
+    line("def _pc_open_random(name):");
+    line("    lines = []");
+    line("    try:");
+    line("        with open(name, 'r') as f:");
+    line("            lines = [l.rstrip('\\r\\n') for l in f]");
+    line("    except FileNotFoundError:");
+    line("        pass");
+    line("    _pc_random_files[name] = {'lines': lines, 'current': 1}");
+    line("def _pc_seek(name, addr):");
+    line("    if name not in _pc_random_files:");
+    line("        raise RuntimeError(f\"File '{name}' not open for RANDOM\")");
+    line("    _pc_random_files[name]['current'] = max(1, int(addr))");
+    line("def _pc_put_record(name, val):");
+    line("    if name not in _pc_random_files:");
+    line("        raise RuntimeError(f\"File '{name}' not open for RANDOM\")");
+    line("    rf = _pc_random_files[name]");
+    line("    idx = rf['current'] - 1");
+    line("    while len(rf['lines']) <= idx:");
+    line("        rf['lines'].append('')");
+    line("    rf['lines'][idx] = str(val)");
+    line("    rf['current'] += 1");
+    line("def _pc_get_record(name):");
+    line("    if name not in _pc_random_files:");
+    line("        raise RuntimeError(f\"File '{name}' not open for RANDOM\")");
+    line("    rf = _pc_random_files[name]");
+    line("    idx = rf['current'] - 1");
+    line("    res = rf['lines'][idx] if idx < len(rf['lines']) else ''");
+    line("    rf['current'] += 1");
+    line("    return res");
+    line("def _pc_close_random(name):");
+    line("    if name in _pc_random_files:");
+    line("        with open(name, 'w') as f:");
+    line("            for l in _pc_random_files[name]['lines']:");
+    line("                f.write(l + '\\n')");
+    line("        del _pc_random_files[name]");
     line("def _pc_open(name, mode):");
+    line("    if mode == 'RANDOM':");
+    line("        _pc_open_random(name)");
+    line("        return");
     line("    m = 'r'");
     line("    if mode == 'WRITE': m = 'w'");
     line("    elif mode == 'APPEND': m = 'a'");
@@ -64,12 +103,17 @@ void PyCodeGen::emitImports() {
     line("def _pc_write(name, val):");
     line("    _pc_files[name].write(str(val) + '\\n')");
     line("def _pc_eof(name):");
+    line("    if name in _pc_random_files:");
+    line("        return _pc_random_files[name]['current'] > len(_pc_random_files[name]['lines'])");
     line("    f = _pc_files[name]");
     line("    pos = f.tell()");
     line("    line = f.readline()");
     line("    f.seek(pos)");
     line("    return len(line) == 0");
     line("def _pc_close(name):");
+    line("    if name in _pc_random_files:");
+    line("        _pc_close_random(name)");
+    line("        return");
     line("    if name in _pc_files:");
     line("        _pc_files[name].close()");
     line("        del _pc_files[name]");
@@ -287,7 +331,11 @@ void PyCodeGen::emitStmt(const Stmt& s) {
             if (insideClass_ && isClassProperty(a.name)) {
                 lhs = "self." + a.name;
             }
-            line(lhs + " = " + expr(*a.value));
+            if (a.value->type.isArray) {
+                line(lhs + " = copy.deepcopy(" + expr(*a.value) + ")");
+            } else {
+                line(lhs + " = " + expr(*a.value));
+            }
             break;
         }
 
@@ -513,6 +561,69 @@ void PyCodeGen::emitStmt(const Stmt& s) {
         case Stmt::Kind::WriteFile: {
             auto& wf = static_cast<const WriteFileStmt&>(s);
             line("_pc_write(" + expr(*wf.filename) + ", " + expr(*wf.value) + ")");
+            break;
+        }
+
+        case Stmt::Kind::Seek: {
+            auto& sk = static_cast<const SeekStmt&>(s);
+            line("_pc_seek(" + expr(*sk.filename) + ", " + expr(*sk.address) + ")");
+            break;
+        }
+
+        case Stmt::Kind::PutRecord: {
+            auto& pr = static_cast<const PutRecordStmt&>(s);
+            if (pr.value->type.base == BaseType::Record) {
+                const auto& rdef = recordTypes_.at(pr.value->type.recordName);
+                std::string valStr = expr(*pr.value);
+                std::string parts = "'|'.join([";
+                for (size_t i = 0; i < rdef.fields.size(); ++i) {
+                    if (i > 0) parts += ", ";
+                    parts += "_pc_str(" + valStr + "." + rdef.fields[i].name + ")";
+                }
+                parts += "])";
+                line("_pc_put_record(" + expr(*pr.filename) + ", " + parts + ")");
+            } else {
+                line("_pc_put_record(" + expr(*pr.filename) + ", _pc_str(" + expr(*pr.value) + "))");
+            }
+            break;
+        }
+
+        case Stmt::Kind::GetRecord: {
+            auto& gr = static_cast<const GetRecordStmt&>(s);
+            std::string target = (gr.target->kind == Expr::Kind::Var) ? static_cast<const VarExpr&>(*gr.target).name : expr(*gr.target);
+            if (insideClass_ && gr.target->kind == Expr::Kind::Var && isClassProperty(target)) {
+                target = "self." + target;
+            }
+            if (gr.target->type.base == BaseType::Record) {
+                const auto& rdef = recordTypes_.at(gr.target->type.recordName);
+                line("_pc_rec_line = _pc_get_record(" + expr(*gr.filename) + ")");
+                line("_pc_rec_parts = _pc_rec_line.split('|')");
+                for (size_t i = 0; i < rdef.fields.size(); ++i) {
+                    const auto& fld = rdef.fields[i];
+                    std::string fldTarget = target + "." + fld.name;
+                    std::string partIdx = "(_pc_rec_parts[" + std::to_string(i) + "] if " + std::to_string(i) + " < len(_pc_rec_parts) else '')";
+                    if (fld.type.base == BaseType::Integer) {
+                        line(fldTarget + " = int(" + partIdx + ") if " + partIdx + " else 0");
+                    } else if (fld.type.base == BaseType::Real) {
+                        line(fldTarget + " = float(" + partIdx + ") if " + partIdx + " else 0.0");
+                    } else if (fld.type.base == BaseType::Boolean) {
+                        line(fldTarget + " = (" + partIdx + ".upper() in ('TRUE', '1')) if " + partIdx + " else False");
+                    } else {
+                        line(fldTarget + " = " + partIdx);
+                    }
+                }
+            } else {
+                line("_pc_rec_val = _pc_get_record(" + expr(*gr.filename) + ")");
+                if (gr.target->type.base == BaseType::Integer) {
+                    line(target + " = int(_pc_rec_val) if _pc_rec_val else 0");
+                } else if (gr.target->type.base == BaseType::Real) {
+                    line(target + " = float(_pc_rec_val) if _pc_rec_val else 0.0");
+                } else if (gr.target->type.base == BaseType::Boolean) {
+                    line(target + " = (_pc_rec_val.upper() in ('TRUE', '1')) if _pc_rec_val else False");
+                } else {
+                    line(target + " = _pc_rec_val");
+                }
+            }
             break;
         }
     }

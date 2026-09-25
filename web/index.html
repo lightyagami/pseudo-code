@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cambridge 9618 Pseudocode Playground</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="navbar">
+    <div class="brand">
+      <span class="logo-icon">⚡</span>
+      <div class="brand-text">
+        <h1>Cambridge 9618 Pseudocode</h1>
+        <span class="badge">WebAssembly Engine</span>
+      </div>
+    </div>
+    <div class="actions">
+      <div class="preset-selector">
+        <label for="preset-select">Preset:</label>
+        <select id="preset-select">
+          <option value="paper4_array">Paper 4: Array-Returning Functions</option>
+          <option value="paper4_random_file">Paper 4: Direct Access Random File I/O</option>
+          <option value="oop_banking">OOP: Banking System (Paper 4)</option>
+          <option value="composite_params">Records & Pass-by-Reference</option>
+          <option value="bubble_sort">Algorithms: Bubble Sort</option>
+          <option value="basics_tour">Syllabus Tour: Core Features</option>
+        </select>
+      </div>
+      <button id="btn-check" class="btn btn-secondary" title="Analyze syntax and type semantics">
+        <span class="icon">🔍</span> Check
+      </button>
+      <button id="btn-run" class="btn btn-primary" title="Execute script on the in-browser WebAssembly VM">
+        <span class="icon">▶</span> Run (VM)
+      </button>
+    </div>
+  </header>
+
+  <main class="playground-layout">
+    <section class="editor-pane">
+      <div class="pane-header">
+        <span class="pane-title">Pseudocode Source (Cambridge 9618)</span>
+        <div class="editor-tools">
+          <button id="btn-clear" class="btn-tool" title="Clear editor">Clear</button>
+          <button id="btn-copy-code" class="btn-tool" title="Copy code">Copy</button>
+        </div>
+      </div>
+      <div class="editor-wrapper">
+        <textarea id="code-editor" spellcheck="false" placeholder="Write Cambridge 9618 Pseudocode here..."></textarea>
+      </div>
+      <div class="stdin-pane">
+        <div class="stdin-header">
+          <span>Standard Input (STDIN)</span>
+          <span class="stdin-hint">Input lines for INPUT statements</span>
+        </div>
+        <textarea id="stdin-input" rows="2" placeholder="e.g. 10&#10;20"></textarea>
+      </div>
+    </section>
+
+    <section class="output-pane">
+      <div class="pane-header">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="vm">VM Console</button>
+          <button class="tab-btn" data-tab="c">Generated C99</button>
+          <button class="tab-btn" data-tab="py">Generated Python 3</button>
+          <button class="tab-btn" data-tab="bc">Bytecode</button>
+          <button class="tab-btn" data-tab="check">Type Check</button>
+        </div>
+        <div class="output-actions">
+          <span id="status-pill" class="status-pill ready">Ready</span>
+          <button id="btn-copy-output" class="btn-tool" title="Copy output">Copy</button>
+        </div>
+      </div>
+      <div class="output-body">
+        <pre id="output-content" class="console-output">Loading WebAssembly pseudoc engine...</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-left">
+      <span>Compliant with Cambridge International AS &amp; A Level Computer Science (9618) Syllabus</span>
+    </div>
+    <div class="footer-right">
+      <span>Backends: WebAssembly VM &bull; ANSI C99 &bull; Python 3</span>
+    </div>
+  </footer>
+
+  <script src="pseudoc.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

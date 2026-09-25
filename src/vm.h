@@ -19,6 +19,12 @@ struct CallFrame {
     Value returnObject; // If set (isObject()), push after procedure returns (used by constructors)
 };
 
+struct RandomFile {
+    std::string path;
+    std::vector<std::string> lines;
+    int64_t currentRecord = 1;
+};
+
 class VM {
 public:
     VM(const std::vector<std::pair<std::string, TypeInfo>>& vars,
@@ -41,6 +47,7 @@ private:
     std::unordered_map<std::string, RecordDef> recordTypes_;
     std::unordered_map<std::string, FILE*> openFiles_;
     std::unordered_map<std::string, std::string> fileModes_;
+    std::unordered_map<std::string, RandomFile> randomFiles_;
 
     void push(Value v);
     Value pop();

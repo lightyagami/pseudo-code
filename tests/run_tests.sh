@@ -3,7 +3,7 @@ set -e
 
 PSEUDOC="./pseudoc"
 TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR" test_sample.txt' EXIT
+trap 'rm -rf "$TMP_DIR" test_sample.txt test_books.dat' EXIT
 
 FAILED=0
 PASSED=0
@@ -97,6 +97,8 @@ run_test "tests/test_builtins.pseudo" ""
 run_test "tests/test_oop.pseudo" ""
 run_test "tests/test_banking_oop.pseudo" ""
 run_test "tests/test_composite_params.pseudo" ""
+run_test "tests/test_random_files.pseudo" ""
+run_test "tests/test_array_return.pseudo" ""
 
 if command -v python3 >/dev/null 2>&1; then
     echo "=== Running Python 3 Transpiler Tests (VM == Python) ==="
@@ -110,6 +112,8 @@ if command -v python3 >/dev/null 2>&1; then
     run_py_test "tests/test_oop.pseudo" ""
     run_py_test "tests/test_banking_oop.pseudo" ""
     run_py_test "tests/test_composite_params.pseudo" ""
+    run_py_test "tests/test_random_files.pseudo" ""
+    run_py_test "tests/test_array_return.pseudo" ""
 fi
 
 run_c_to_pseudo_test() {
@@ -175,6 +179,44 @@ run_negative_check "Type mismatch assignment" "DECLARE x : INTEGER\nx <- \"hello
 run_negative_check "Undeclared variable" "undeclared_var <- 42"
 run_negative_check "Arity mismatch" "FUNCTION f(a : INTEGER) RETURNS INTEGER\nRETURN a\nENDFUNCTION\nDECLARE res : INTEGER\nres <- f(1, 2)"
 run_negative_check "Duplicate declaration in same scope" "DECLARE x : INTEGER\nDECLARE x : INTEGER"
+
+if command -v node >/dev/null 2>&1 && [ -f "web/pseudoc.js" ]; then
+    echo "=== Running WebAssembly / Node.js Engine Verification ==="
+    if node -e "
+const createPseudocModule = require('./web/pseudoc.js');
+createPseudocModule().then(Module => {
+    const run_vm = Module.cwrap('wasm_run_vm', 'string', ['string', 'string']);
+    const check = Module.cwrap('wasm_check', 'string', ['string']);
+    const emit_c = Module.cwrap('wasm_emit_c', 'string', ['string']);
+    const emit_py = Module.cwrap('wasm_emit_py', 'string', ['string']);
+    const dump_bc = Module.cwrap('wasm_dump_bytecode', 'string', ['string']);
+
+    const code = 'DECLARE x : INTEGER\nx <- 42\nOUTPUT \"WASM_OK: \", x';
+    const out = run_vm(code, '');
+    if (!out.includes('WASM_OK: 42')) process.exit(1);
+
+    const chk = check(code);
+    if (!chk.includes('OK')) process.exit(1);
+
+    const c = emit_c(code);
+    if (!c.includes('int main')) process.exit(1);
+
+    const py = emit_py(code);
+    if (!py.includes('x = 42')) process.exit(1);
+
+    const bc = dump_bc(code);
+    if (!bc.includes('OP_HALT')) process.exit(1);
+
+    process.exit(0);
+}).catch(() => process.exit(1));
+" >/dev/null 2>&1; then
+        echo "  [PASS] WebAssembly pseudoc engine (VM, C, Python, Bytecode, Check)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [FAIL] WebAssembly engine failed in Node.js runtime!"
+        FAILED=$((FAILED + 1))
+    fi
+fi
 
 echo "------------------------------------------------"
 echo "Results: $PASSED passed, $FAILED failed"

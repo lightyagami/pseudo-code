@@ -202,7 +202,8 @@ struct Stmt {
         Declare, Constant, Assign, ArrayAssign, MemberAssign, Output, Input,
         If, While, Repeat, For, Case,
         TypeDecl, ClassDecl, ProcedureDecl, FunctionDecl, Call, Return,
-        OpenFile, CloseFile, ReadFile, WriteFile
+        OpenFile, CloseFile, ReadFile, WriteFile,
+        Seek, GetRecord, PutRecord
     };
     Kind kind;
     int line, col;
@@ -378,6 +379,24 @@ struct WriteFileStmt : Stmt {
     ExprPtr filename;
     ExprPtr value;
     WriteFileStmt(int l, int c) : Stmt(Kind::WriteFile, l, c) {}
+};
+
+struct SeekStmt : Stmt {
+    ExprPtr filename;
+    ExprPtr address;
+    SeekStmt(int l, int c) : Stmt(Kind::Seek, l, c) {}
+};
+
+struct GetRecordStmt : Stmt {
+    ExprPtr filename;
+    ExprPtr target;
+    GetRecordStmt(int l, int c) : Stmt(Kind::GetRecord, l, c) {}
+};
+
+struct PutRecordStmt : Stmt {
+    ExprPtr filename;
+    ExprPtr value;
+    PutRecordStmt(int l, int c) : Stmt(Kind::PutRecord, l, c) {}
 };
 
 #endif // PSEUDOC_AST_H

@@ -107,6 +107,9 @@ StmtPtr Parser::parseStatement() {
         case Tok::CloseFile:   advance(); return parseCloseFile();
         case Tok::ReadFile:    advance(); return parseReadFile();
         case Tok::WriteFile:   advance(); return parseWriteFile();
+        case Tok::Seek:        advance(); return parseSeek();
+        case Tok::GetRecord:   advance(); return parseGetRecord();
+        case Tok::PutRecord:   advance(); return parsePutRecord();
         case Tok::Ident: {
             Token name = advance();
             return parseAssignOrMemberOrArray(name);
@@ -532,7 +535,8 @@ StmtPtr Parser::parseOpenFile() {
     if (match(Tok::Read)) mode = "READ";
     else if (match(Tok::Write)) mode = "WRITE";
     else if (match(Tok::Append)) mode = "APPEND";
-    else fail(peek(), "expected file mode ('READ', 'WRITE', or 'APPEND')");
+    else if (match(Tok::Random)) mode = "RANDOM";
+    else fail(peek(), "expected file mode ('READ', 'WRITE', 'APPEND', or 'RANDOM')");
     expect(Tok::Newline, "end of line");
 
     auto s = std::make_unique<OpenFileStmt>(line, col);
@@ -571,6 +575,45 @@ StmtPtr Parser::parseWriteFile() {
     expect(Tok::Newline, "end of line");
 
     auto s = std::make_unique<WriteFileStmt>(line, col);
+    s->filename = std::move(filename);
+    s->value = std::move(val);
+    return s;
+}
+
+StmtPtr Parser::parseSeek() {
+    int line = previous().line, col = previous().col;
+    ExprPtr filename = parseExpr();
+    expect(Tok::Comma, "','");
+    ExprPtr address = parseExpr();
+    expect(Tok::Newline, "end of line");
+
+    auto s = std::make_unique<SeekStmt>(line, col);
+    s->filename = std::move(filename);
+    s->address = std::move(address);
+    return s;
+}
+
+StmtPtr Parser::parseGetRecord() {
+    int line = previous().line, col = previous().col;
+    ExprPtr filename = parseExpr();
+    expect(Tok::Comma, "','");
+    ExprPtr target = parseExpr();
+    expect(Tok::Newline, "end of line");
+
+    auto s = std::make_unique<GetRecordStmt>(line, col);
+    s->filename = std::move(filename);
+    s->target = std::move(target);
+    return s;
+}
+
+StmtPtr Parser::parsePutRecord() {
+    int line = previous().line, col = previous().col;
+    ExprPtr filename = parseExpr();
+    expect(Tok::Comma, "','");
+    ExprPtr val = parseExpr();
+    expect(Tok::Newline, "end of line");
+
+    auto s = std::make_unique<PutRecordStmt>(line, col);
     s->filename = std::move(filename);
     s->value = std::move(val);
     return s;

@@ -22,6 +22,7 @@ enum class Tok {
     // I/O & Files
     Output, Input,
     OpenFile, CloseFile, ReadFile, WriteFile, Read, Write, Append,
+    Random, Seek, GetRecord, PutRecord,
     // Logic & Math Operators
     And, Or, Not, Div, Mod, True, False,
     // Built-in functions
@@ -63,6 +64,8 @@ static const std::unordered_map<std::string, Tok> kKeywords = {
     {"OPENFILE", Tok::OpenFile}, {"CLOSEFILE", Tok::CloseFile},
     {"READFILE", Tok::ReadFile}, {"WRITEFILE", Tok::WriteFile},
     {"READ", Tok::Read}, {"WRITE", Tok::Write}, {"APPEND", Tok::Append},
+    {"RANDOM", Tok::Random}, {"SEEK", Tok::Seek},
+    {"GETRECORD", Tok::GetRecord}, {"PUTRECORD", Tok::PutRecord},
     {"AND", Tok::And}, {"OR", Tok::Or}, {"NOT", Tok::Not},
     {"DIV", Tok::Div}, {"MOD", Tok::Mod},
     {"TRUE", Tok::True}, {"FALSE", Tok::False}

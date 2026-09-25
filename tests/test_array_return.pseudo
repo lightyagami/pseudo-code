@@ -1,0 +1,23 @@
+FUNCTION MakeArray() RETURNS ARRAY[1:4] OF INTEGER
+    DECLARE res : ARRAY[1:4] OF INTEGER
+    DECLARE i : INTEGER
+    FOR i <- 1 TO 4
+        res[i] <- i * 10
+    NEXT i
+    RETURN res
+ENDFUNCTION
+
+DECLARE a : ARRAY[1:4] OF INTEGER
+DECLARE b : ARRAY[1:4] OF INTEGER
+DECLARE j : INTEGER
+
+a <- MakeArray()
+FOR j <- 1 TO 4
+    OUTPUT a[j]
+NEXT j
+
+b <- a
+b[1] <- 999
+
+OUTPUT "Original a[1]:", a[1]
+OUTPUT "Modified b[1]:", b[1]

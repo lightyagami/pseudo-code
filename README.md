@@ -14,12 +14,13 @@ It can execute pseudocode scripts directly on a stack-based virtual machine, tra
 - **Language Support**:
   - **Primitive Types**: `INTEGER`, `REAL`, `BOOLEAN`, `STRING`, `CHAR` (single quotes `'a'`).
   - **Constants**: `CONSTANT <identifier> = <literal>` with compile-time immutability enforcement.
-  - **Composite Types**: 1D and 2D `ARRAY` with arbitrary lower/upper bounds, and user-defined `TYPE ... ENDTYPE` records.
+  - **Composite Types & Arrays**: 1D and 2D `ARRAY` with arbitrary lower/upper bounds, whole-array assignment (`dest <- src`), array-returning functions (`FUNCTION Foo() RETURNS ARRAY[1:N] OF ...`), and user-defined `TYPE ... ENDTYPE` records.
   - **Object-Oriented Programming (Cambridge 9618)**: `CLASS ... ENDCLASS`, `PRIVATE`/`PUBLIC` access modifiers, constructors (`PUBLIC PROCEDURE NEW(...)`), instantiation (`NEW ClassName(...)`), single inheritance (`CLASS Child INHERITS Parent`), and `SUPER` method dispatch.
-  - **Subroutines**: `PROCEDURE` and `FUNCTION`, recursion, return values, and explicit parameter passing (`BYVAL` default, `BYREF` mutable references).
+  - **Subroutines**: `PROCEDURE` and `FUNCTION`, recursion, return values, array returns, and explicit parameter passing (`BYVAL` default, `BYREF` mutable references).
   - **Control Flow**: `IF ... THEN ... ELSE ... ENDIF`, `WHILE ... DO ... ENDWHILE`, `REPEAT ... UNTIL <condition>`, `FOR ... TO ... STEP ... NEXT`, and `CASE OF ... OTHERWISE ... ENDCASE`.
-  - **File I/O**: `OPENFILE ... FOR READ|WRITE|APPEND`, `READFILE`, `WRITEFILE`, `CLOSEFILE`, and `EOF(...)`.
+  - **File I/O & Direct Access (Paper 4)**: Sequential files (`OPENFILE ... FOR READ|WRITE|APPEND`, `READFILE`, `WRITEFILE`), direct-access random files (`OPENFILE ... FOR RANDOM`, `SEEK`, `GETRECORD`, `PUTRECORD`), `CLOSEFILE`, and `EOF(...)`.
   - **Built-in Functions**: `LENGTH`, `SUBSTRING` / `MID`, `LEFT`, `RIGHT`, `UCASE`, `LCASE`, `CHR`, `ASC`, `INT`, `ROUND`, `RND` / `RANDOM`, `NUM_TO_STR`, `STR_TO_NUM`, `MOD(a, b)`, `DIV(a, b)`, string concatenation (`&`), and integer arithmetic operators (`DIV`, `MOD`).
+  - **WebAssembly Playground**: Browser-based interactive IDE compiling pseudocode to WASM, running directly in the client with multi-tab output (VM, C99, Python 3, Bytecode, Semantic Check).
   - **Safety**: 64-bit integer overflow checks, runtime array bounds checking, and file handle tracking.
 
 ## Building & Installation
@@ -40,6 +41,15 @@ Install system-wide:
 
 ```bash
 sudo make install
+```
+
+Build WebAssembly Playground:
+
+```bash
+make wasm
+# Serve locally:
+python3 -m http.server --directory web 8000
+# Open http://localhost:8000 in any web browser!
 ```
 
 Clean build artifacts:

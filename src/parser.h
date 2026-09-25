@@ -56,6 +56,9 @@ private:
     StmtPtr parseCloseFile();
     StmtPtr parseReadFile();
     StmtPtr parseWriteFile();
+    StmtPtr parseSeek();
+    StmtPtr parseGetRecord();
+    StmtPtr parsePutRecord();
 
     ExprPtr parseExpr();
     ExprPtr parseOr();

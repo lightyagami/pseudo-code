@@ -67,6 +67,9 @@ const char* opCodeName(OpCode op) {
         case OpCode::OpReadFile:           return "OP_READ_FILE";
         case OpCode::OpWriteFile:          return "OP_WRITE_FILE";
         case OpCode::OpEof:                return "OP_EOF";
+        case OpCode::OpSeekFile:           return "OP_SEEK_FILE";
+        case OpCode::OpGetRecord:          return "OP_GET_RECORD";
+        case OpCode::OpPutRecord:          return "OP_PUT_RECORD";
         case OpCode::OpAdd:                return "OP_ADD";
         case OpCode::OpSub:                return "OP_SUB";
         case OpCode::OpMul:                return "OP_MUL";
@@ -854,6 +857,47 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
             compileExpr(*wf.filename);
             compileExpr(*wf.value);
             emit(OpCode::OpWriteFile, 0, 0, 0, 0, wf.line);
+            break;
+        }
+        case Stmt::Kind::Seek: {
+            auto& sk = static_cast<const SeekStmt&>(s);
+            compileExpr(*sk.filename);
+            compileExpr(*sk.address);
+            emit(OpCode::OpSeekFile, 0, 0, 0, 0, sk.line);
+            break;
+        }
+        case Stmt::Kind::PutRecord: {
+            auto& pr = static_cast<const PutRecordStmt&>(s);
+            compileExpr(*pr.filename);
+            compileExpr(*pr.value);
+            emit(OpCode::OpPutRecord, 0, 0, 0, 0, pr.line);
+            break;
+        }
+        case Stmt::Kind::GetRecord: {
+            auto& gr = static_cast<const GetRecordStmt&>(s);
+            compileExpr(*gr.filename);
+            int baseType = static_cast<int>(gr.target->type.base);
+            int recNameConst = 0;
+            if (gr.target->type.base == BaseType::Record) {
+                recNameConst = addConstant(Value::makeString(gr.target->type.recordName));
+            }
+            emit(OpCode::OpGetRecord, baseType, recNameConst, 0, 0, gr.line);
+            if (gr.target->kind == Expr::Kind::Var) {
+                auto& v = static_cast<const VarExpr&>(*gr.target);
+                emit(OpCode::OpSetVar, getVarSlot(v.name), 0, 0, 0, gr.line);
+            } else if (gr.target->kind == Expr::Kind::ArrayAccess) {
+                auto& a = static_cast<const ArrayAccessExpr&>(*gr.target);
+                for (auto& idx : a.indices) compileExpr(*idx);
+                int enc = getVarSlot(a.name);
+                int nameConst = addConstant(Value::makeString(a.name));
+                if (a.indices.size() == 1) emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, gr.line);
+                else emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, gr.line);
+            } else if (gr.target->kind == Expr::Kind::MemberAccess) {
+                auto& m = static_cast<const MemberAccessExpr&>(*gr.target);
+                compileExpr(*m.target);
+                int fieldConst = addConstant(Value::makeString(m.field));
+                emit(OpCode::OpSetField, fieldConst, 0, 0, 0, gr.line);
+            }
             break;
         }
         case Stmt::Kind::TypeDecl:
