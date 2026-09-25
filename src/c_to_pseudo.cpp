@@ -451,6 +451,114 @@ private:
         return "";
     }
 
+    std::string parseArrayDeclAndInit(const std::string& name, const std::string& type, int lvl, bool isGlobal = false) {
+        std::string n1;
+        if (!check(CTok::RBracket)) {
+            n1 = parseExprString();
+        }
+        match(CTok::RBracket);
+
+        std::string n2;
+        if (match(CTok::LBracket)) {
+            if (!check(CTok::RBracket)) {
+                n2 = parseExprString();
+            }
+            match(CTok::RBracket);
+        }
+
+        std::vector<std::string> inits1D;
+        std::vector<std::vector<std::string>> inits2D;
+        bool hasInit = false;
+
+        if (match(CTok::Eq)) {
+            hasInit = true;
+            if (match(CTok::LBrace)) {
+                if (n2.empty()) {
+                    // 1D array
+                    while (!check(CTok::RBrace) && !atEnd()) {
+                        inits1D.push_back(parseExprString());
+                        if (!match(CTok::Comma)) break;
+                    }
+                    match(CTok::RBrace);
+                } else {
+                    // 2D array
+                    while (!check(CTok::RBrace) && !atEnd()) {
+                        if (match(CTok::LBrace)) {
+                            std::vector<std::string> row;
+                            while (!check(CTok::RBrace) && !atEnd()) {
+                                row.push_back(parseExprString());
+                                if (!match(CTok::Comma)) break;
+                            }
+                            match(CTok::RBrace);
+                            inits2D.push_back(row);
+                        } else {
+                            inits1D.push_back(parseExprString());
+                        }
+                        if (!match(CTok::Comma)) break;
+                    }
+                    match(CTok::RBrace);
+                }
+            } else {
+                std::string sVal = parseExprString();
+                match(CTok::Semicolon);
+                std::string ind = isGlobal ? "" : indent(lvl);
+                return ind + "DECLARE " + name + " : STRING\n" + ind + name + " <- " + sVal;
+            }
+        }
+        match(CTok::Semicolon);
+
+        int span1 = 1;
+        if (!n1.empty()) {
+            try { span1 = std::stoi(n1); } catch (...) {}
+        } else if (!inits1D.empty()) {
+            span1 = static_cast<int>(inits1D.size());
+        } else if (!inits2D.empty()) {
+            span1 = static_cast<int>(inits2D.size());
+        }
+
+        int span2 = 0;
+        if (!n2.empty()) {
+            try { span2 = std::stoi(n2); } catch (...) {}
+        } else if (!inits2D.empty() && !inits2D[0].empty()) {
+            span2 = static_cast<int>(inits2D[0].size());
+        }
+
+        std::string ind = isGlobal ? "" : indent(lvl);
+        std::ostringstream ss;
+        if (span2 == 0) {
+            ss << ind << "DECLARE " << name << " : ARRAY[0:" << (span1 > 0 ? span1 - 1 : 0) << "] OF " << type;
+            if (hasInit) {
+                bool isZeroInit = (inits1D.size() == 1 && (inits1D[0] == "0" || inits1D[0] == "0.0") && span1 > 1);
+                if (!isZeroInit) {
+                    for (size_t i = 0; i < inits1D.size(); ++i) {
+                        ss << "\n" << ind << name << "[" << i << "] <- " << inits1D[i];
+                    }
+                }
+            }
+        } else {
+            ss << ind << "DECLARE " << name << " : ARRAY[0:" << (span1 > 0 ? span1 - 1 : 0) << ", 0:" << (span2 > 0 ? span2 - 1 : 0) << "] OF " << type;
+            if (hasInit) {
+                if (!inits2D.empty()) {
+                    for (size_t r = 0; r < inits2D.size(); ++r) {
+                        for (size_t c = 0; c < inits2D[r].size(); ++c) {
+                            ss << "\n" << ind << name << "[" << r << ", " << c << "] <- " << inits2D[r][c];
+                        }
+                    }
+                } else if (!inits1D.empty()) {
+                    bool isZeroInit = (inits1D.size() == 1 && (inits1D[0] == "0" || inits1D[0] == "0.0"));
+                    if (!isZeroInit) {
+                        for (size_t i = 0; i < inits1D.size(); ++i) {
+                            int r = static_cast<int>(i / span2);
+                            int c = static_cast<int>(i % span2);
+                            ss << "\n" << ind << name << "[" << r << ", " << c << "] <- " << inits1D[i];
+                        }
+                    }
+                }
+            }
+        }
+        return ss.str();
+    }
+
     std::string parseGlobalDecl() {
         bool isConst = false;
         if (check(CTok::Const)) { isConst = true; advance(); }
@@ -462,25 +570,7 @@ private:
 
         // Check if array
         if (match(CTok::LBracket)) {
-            std::string n1 = parseExprString();
-            match(CTok::RBracket);
-            std::string n2;
-            if (match(CTok::LBracket)) {
-                n2 = parseExprString();
-                match(CTok::RBracket);
-            }
-            match(CTok::Semicolon);
-
-            int span1 = 1;
-            try { span1 = std::stoi(n1); } catch (...) {}
-            if (n2.empty()) {
-                return "DECLARE " + name + " : ARRAY[0:" + std::to_string(span1 - 1) + "] OF " + type;
-            } else {
-                int span2 = 1;
-                try { span2 = std::stoi(n2); } catch (...) {}
-                return "DECLARE " + name + " : ARRAY[0:" + std::to_string(span1 - 1) + ", 0:" +
-                       std::to_string(span2 - 1) + "] OF " + type;
-            }
+            return parseArrayDeclAndInit(name, type, 0, true);
         }
 
         if (match(CTok::Eq)) {
@@ -618,12 +708,7 @@ private:
             }
 
             if (match(CTok::LBracket)) {
-                std::string n1 = parseExprString();
-                match(CTok::RBracket);
-                match(CTok::Semicolon);
-                int span = 1;
-                try { span = std::stoi(n1); } catch (...) {}
-                return indent(lvl) + "DECLARE " + name + " : ARRAY[0:" + std::to_string(span - 1) + "] OF " + type;
+                return parseArrayDeclAndInit(name, type, lvl, false);
             }
 
             if (match(CTok::Eq)) {
@@ -696,6 +781,30 @@ private:
         // For loop
         if (match(CTok::For)) {
             match(CTok::LParen);
+
+            // Check for for (;;) or for (; cond; step)
+            if (match(CTok::Semicolon)) {
+                std::string cond = "TRUE";
+                if (!check(CTok::Semicolon)) {
+                    cond = parseExprString();
+                }
+                match(CTok::Semicolon);
+                std::string stepStmt;
+                if (!check(CTok::RParen)) {
+                    stepStmt = parseExprString();
+                }
+                match(CTok::RParen);
+
+                std::ostringstream ss;
+                ss << indent(lvl) << "WHILE " << cond << " DO\n";
+                ss << parseBlockOrStmt(lvl + 1);
+                if (!stepStmt.empty()) {
+                    ss << "\n" << indent(lvl + 1) << stepStmt;
+                }
+                ss << "\n" << indent(lvl) << "ENDWHILE";
+                return ss.str();
+            }
+
             std::string declPrefix;
             if (isTypeStart()) {
                 std::string type = parseTypeString();
@@ -728,14 +837,61 @@ private:
             match(CTok::Semicolon);
 
             std::string stepStr = "1";
-            if (check(CTok::Ident) && cleanIdent(peek().text) == varName) {
+            if (match(CTok::PlusPlus)) {
+                if (check(CTok::Ident) && cleanIdent(peek().text) == varName) { advance(); stepStr = "1"; }
+            } else if (match(CTok::MinusMinus)) {
+                if (check(CTok::Ident) && cleanIdent(peek().text) == varName) { advance(); stepStr = "-1"; }
+            } else if (check(CTok::Ident) && cleanIdent(peek().text) == varName) {
                 advance();
                 if (match(CTok::PlusPlus)) stepStr = "1";
                 else if (match(CTok::MinusMinus)) stepStr = "-1";
                 else if (match(CTok::PlusEq)) stepStr = parseExprString();
                 else if (match(CTok::MinusEq)) stepStr = "-" + parseExprString();
+                else if (match(CTok::Eq)) {
+                    std::string rhs = parseExprString();
+                    if (rhs.rfind(varName + " - ", 0) == 0) {
+                        stepStr = "-" + rhs.substr(varName.size() + 3);
+                    } else if (rhs.rfind(varName + " + ", 0) == 0) {
+                        stepStr = rhs.substr(varName.size() + 3);
+                    } else {
+                        stepStr = rhs;
+                    }
+                }
             }
             match(CTok::RParen);
+
+            // Adjust bound if strict comparison (< or >)
+            if (compOp == "<") {
+                bool isNum = true;
+                for (char c : endVal) {
+                    if (!std::isdigit(static_cast<unsigned char>(c)) && c != '-') { isNum = false; break; }
+                }
+                if (isNum && !endVal.empty() && endVal != "-") {
+                    try {
+                        long long v = std::stoll(endVal);
+                        endVal = std::to_string(v - 1);
+                    } catch (...) {
+                        endVal = "(" + endVal + " - 1)";
+                    }
+                } else {
+                    endVal = "(" + endVal + " - 1)";
+                }
+            } else if (compOp == ">") {
+                bool isNum = true;
+                for (char c : endVal) {
+                    if (!std::isdigit(static_cast<unsigned char>(c)) && c != '-') { isNum = false; break; }
+                }
+                if (isNum && !endVal.empty() && endVal != "-") {
+                    try {
+                        long long v = std::stoll(endVal);
+                        endVal = std::to_string(v + 1);
+                    } catch (...) {
+                        endVal = "(" + endVal + " + 1)";
+                    }
+                } else {
+                    endVal = "(" + endVal + " + 1)";
+                }
+            }
 
             std::ostringstream ss;
             if (!declPrefix.empty()) ss << declPrefix;
@@ -917,6 +1073,10 @@ private:
             std::string rhs = parseAssignExpr();
             return lhs + " <- " + lhs + " / " + rhs;
         }
+        if (match(CTok::PercentEq)) {
+            std::string rhs = parseAssignExpr();
+            return lhs + " <- " + lhs + " MOD " + rhs;
+        }
         return lhs;
     }
 
@@ -1000,16 +1160,16 @@ private:
         }
         if (match(CTok::PlusPlus)) {
             std::string operand = parseUnary();
-            return operand + " + 1";
+            return operand + " <- " + operand + " + 1";
         }
         if (match(CTok::MinusMinus)) {
             std::string operand = parseUnary();
-            return operand + " - 1";
+            return operand + " <- " + operand + " - 1";
         }
 
         std::string prim = parsePrimary();
-        if (match(CTok::PlusPlus)) return prim + " + 1";
-        if (match(CTok::MinusMinus)) return prim + " - 1";
+        if (match(CTok::PlusPlus)) return prim + " <- " + prim + " + 1";
+        if (match(CTok::MinusMinus)) return prim + " <- " + prim + " - 1";
         return prim;
     }
 

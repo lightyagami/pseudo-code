@@ -143,6 +143,17 @@ run_c_to_pseudo_test() {
 echo "=== Running Reverse C-to-Pseudocode Tests ==="
 run_c_to_pseudo_test "tests/test_c_to_pseudo.c"
 
+echo "=== Running --check / Syntax & Sema Only Tests ==="
+for check_f in "tour.pseudo" "tests/test_banking_oop.pseudo" "tests/test_c_to_pseudo.c"; do
+    if $PSEUDOC --check "$check_f"; then
+        echo "  [PASS] $check_f (--check passed)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [FAIL] $check_f (--check failed)"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
 echo "------------------------------------------------"
 echo "Results: $PASSED passed, $FAILED failed"
 
