@@ -139,6 +139,41 @@ void PyCodeGen::emitImports() {
     line("    if v is False: return 'FALSE'");
     line("    if isinstance(v, float): return f'{v:.10g}'");
     line("    return str(v)");
+    line("_PC_INT_MAX = 9223372036854775807");
+    line("_PC_INT_MIN = -9223372036854775808");
+    line("def _pc_bounds_check(val, low, high, name):");
+    line("    if val < low or val > high:");
+    line("        print(f\"Runtime Error: Array index out of bounds on '{name}': index {val} not in [{low}:{high}]\", file=sys.stderr)");
+    line("        sys.exit(1)");
+    line("    return val");
+    line("def _pc_add(a, b):");
+    line("    res = a + b");
+    line("    if res > _PC_INT_MAX or res < _PC_INT_MIN:");
+    line("        print(\"Runtime Error: 64-bit integer addition overflow\", file=sys.stderr)");
+    line("        sys.exit(1)");
+    line("    return res");
+    line("def _pc_sub(a, b):");
+    line("    res = a - b");
+    line("    if res > _PC_INT_MAX or res < _PC_INT_MIN:");
+    line("        print(\"Runtime Error: 64-bit integer subtraction overflow\", file=sys.stderr)");
+    line("        sys.exit(1)");
+    line("    return res");
+    line("def _pc_mul(a, b):");
+    line("    res = a * b");
+    line("    if res > _PC_INT_MAX or res < _PC_INT_MIN:");
+    line("        print(\"Runtime Error: 64-bit integer multiplication overflow\", file=sys.stderr)");
+    line("        sys.exit(1)");
+    line("    return res");
+    line("def _pc_div(a, b):");
+    line("    if b == 0:");
+    line("        print(\"Runtime Error: Integer division (DIV) by zero\", file=sys.stderr)");
+    line("        sys.exit(1)");
+    line("    return a // b");
+    line("def _pc_mod(a, b):");
+    line("    if b == 0:");
+    line("        print(\"Runtime Error: Modulo (MOD) by zero\", file=sys.stderr)");
+    line("        sys.exit(1)");
+    line("    return a % b");
     line("");
 }
 
@@ -352,6 +387,7 @@ void PyCodeGen::emitStmt(const Stmt& s) {
 
         case Stmt::Kind::Declare: {
             auto& d = static_cast<const DeclareStmt&>(s);
+            varMap_[d.name] = d.declaredType;
             if (d.declaredType.isArray) {
                 int64_t n1 = d.declaredType.upper1 + 1;
                 std::string elemInit = "0";
@@ -402,10 +438,37 @@ void PyCodeGen::emitStmt(const Stmt& s) {
 
         case Stmt::Kind::ArrayAssign: {
             auto& a = static_cast<const ArrayAssignStmt&>(s);
-            std::string target = a.name;
-            if (a.target) target = expr(*a.target);
-            for (auto& idx : a.indices) {
-                target += "[" + expr(*idx) + "]";
+            std::string arrName = a.name;
+            if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+                arrName = static_cast<const VarExpr&>(*a.target).name;
+            }
+            std::string target = a.target ? expr(*a.target) : a.name;
+            auto it = varMap_.find(arrName);
+            if (it != varMap_.end() && it->second.isArray) {
+                const auto& info = it->second;
+                for (size_t i = 0; i < a.indices.size(); ++i) {
+                    int64_t low = (i == 0) ? info.lower1 : info.lower2;
+                    int64_t high = (i == 0) ? info.upper1 : info.upper2;
+                    if (low != 0 || high != 0) {
+                        target += "[_pc_bounds_check(" + expr(*a.indices[i]) + ", " +
+                                  std::to_string(low) + ", " + std::to_string(high) + ", \"" + arrName + "\")]";
+                    } else {
+                        target += "[" + expr(*a.indices[i]) + "]";
+                    }
+                }
+            } else {
+                for (size_t i = 0; i < a.indices.size(); ++i) {
+                    if (a.target && a.target->type.isArray) {
+                        int64_t low = (i == 0) ? a.target->type.lower1 : a.target->type.lower2;
+                        int64_t high = (i == 0) ? a.target->type.upper1 : a.target->type.upper2;
+                        if (low != 0 || high != 0) {
+                            target += "[_pc_bounds_check(" + expr(*a.indices[i]) + ", " +
+                                      std::to_string(low) + ", " + std::to_string(high) + ", \"array\")]";
+                            continue;
+                        }
+                    }
+                    target += "[" + expr(*a.indices[i]) + "]";
+                }
             }
             line(target + " = " + expr(*a.value));
             break;
@@ -737,9 +800,37 @@ std::string PyCodeGen::expr(const Expr& e) {
         }
         case Expr::Kind::ArrayAccess: {
             auto& a = static_cast<const ArrayAccessExpr&>(e);
+            std::string arrName = a.name;
+            if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
+                arrName = static_cast<const VarExpr&>(*a.target).name;
+            }
             std::string s = a.target ? expr(*a.target) : a.name;
-            for (auto& idx : a.indices) {
-                s += "[" + expr(*idx) + "]";
+            auto it = varMap_.find(arrName);
+            if (it != varMap_.end() && it->second.isArray) {
+                const auto& info = it->second;
+                for (size_t i = 0; i < a.indices.size(); ++i) {
+                    int64_t low = (i == 0) ? info.lower1 : info.lower2;
+                    int64_t high = (i == 0) ? info.upper1 : info.upper2;
+                    if (low != 0 || high != 0) {
+                        s += "[_pc_bounds_check(" + expr(*a.indices[i]) + ", " +
+                             std::to_string(low) + ", " + std::to_string(high) + ", \"" + arrName + "\")]";
+                    } else {
+                        s += "[" + expr(*a.indices[i]) + "]";
+                    }
+                }
+            } else {
+                for (size_t i = 0; i < a.indices.size(); ++i) {
+                    if (a.target && a.target->type.isArray) {
+                        int64_t low = (i == 0) ? a.target->type.lower1 : a.target->type.lower2;
+                        int64_t high = (i == 0) ? a.target->type.upper1 : a.target->type.upper2;
+                        if (low != 0 || high != 0) {
+                            s += "[_pc_bounds_check(" + expr(*a.indices[i]) + ", " +
+                                 std::to_string(low) + ", " + std::to_string(high) + ", \"array\")]";
+                            continue;
+                        }
+                    }
+                    s += "[" + expr(*a.indices[i]) + "]";
+                }
             }
             return s;
         }
@@ -839,9 +930,9 @@ std::string PyCodeGen::call(const CallExpr& c) {
         case Tok::Rnd:
             return "random.random()";
         case Tok::Mod:
-            return "(" + expr(*c.args[0]) + " % " + expr(*c.args[1]) + ")";
+            return "_pc_mod(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::Div:
-            return "(" + expr(*c.args[0]) + " // " + expr(*c.args[1]) + ")";
+            return "_pc_div(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::EofFunc:
             return "_pc_eof(" + expr(*c.args[0]) + ")";
         case Tok::ReadFile:
@@ -861,10 +952,10 @@ std::string PyCodeGen::binary(const BinaryExpr& b) {
         return "(str(" + l + ") + str(" + r + "))";
     }
     if (b.op == Tok::Div) {
-        return "(" + l + " // " + r + ")";
+        return "_pc_div(" + l + ", " + r + ")";
     }
     if (b.op == Tok::Mod) {
-        return "(" + l + " % " + r + ")";
+        return "_pc_mod(" + l + ", " + r + ")";
     }
     if (b.op == Tok::Slash) {
         return "(" + l + " / " + r + ")";
@@ -874,6 +965,12 @@ std::string PyCodeGen::binary(const BinaryExpr& b) {
     }
     if (b.op == Tok::Or) {
         return "(" + l + " or " + r + ")";
+    }
+
+    if (b.lhs->type.base == BaseType::Integer && b.rhs->type.base == BaseType::Integer) {
+        if (b.op == Tok::Plus)  return "_pc_add(" + l + ", " + r + ")";
+        if (b.op == Tok::Minus) return "_pc_sub(" + l + ", " + r + ")";
+        if (b.op == Tok::Star)  return "_pc_mul(" + l + ", " + r + ")";
     }
 
     const char* op = "+";
