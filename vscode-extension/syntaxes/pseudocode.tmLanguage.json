@@ -1,0 +1,112 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Cambridge 9618 Pseudocode",
+  "scopeName": "source.pseudocode",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#characters" },
+    { "include": "#numbers" },
+    { "include": "#booleans" },
+    { "include": "#operators" },
+    { "include": "#control_flow" },
+    { "include": "#declarations" },
+    { "include": "#subroutines" },
+    { "include": "#types" },
+    { "include": "#io_and_files" },
+    { "include": "#builtins" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "name": "comment.line.double-slash.pseudocode",
+      "match": "//.*$"
+    },
+    "strings": {
+      "name": "string.quoted.double.pseudocode",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.pseudocode",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "characters": {
+      "name": "string.quoted.single.pseudocode",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "name": "constant.character.escape.pseudocode",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.pseudocode",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.pseudocode",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "name": "constant.language.boolean.pseudocode",
+      "match": "(?i)\\b(TRUE|FALSE)\\b"
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.pseudocode",
+          "match": "<-"
+        },
+        {
+          "name": "keyword.operator.logical.pseudocode",
+          "match": "(?i)\\b(AND|OR|NOT|DIV|MOD)\\b"
+        },
+        {
+          "name": "keyword.operator.comparison.pseudocode",
+          "match": "(<=|>=|<>|<|>|=)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.pseudocode",
+          "match": "(\\+|-|\\*|/|&)"
+        }
+      ]
+    },
+    "control_flow": {
+      "name": "keyword.control.pseudocode",
+      "match": "(?i)\\b(IF|THEN|ELSE|ENDIF|WHILE|DO|ENDWHILE|REPEAT|UNTIL|FOR|TO|STEP|NEXT|CASE|OF|OTHERWISE|ENDCASE)\\b"
+    },
+    "declarations": {
+      "name": "keyword.declaration.pseudocode",
+      "match": "(?i)\\b(DECLARE|CONSTANT|TYPE|ENDTYPE|CLASS|ENDCLASS|INHERITS|EXTENDS|SUPER|NEW|PUBLIC|PRIVATE|PROTECTED)\\b"
+    },
+    "subroutines": {
+      "name": "keyword.other.procedure.pseudocode",
+      "match": "(?i)\\b(PROCEDURE|ENDPROCEDURE|FUNCTION|ENDFUNCTION|RETURNS|RETURN|CALL|BYVAL|BYREF)\\b"
+    },
+    "types": {
+      "name": "storage.type.pseudocode",
+      "match": "(?i)\\b(INTEGER|REAL|BOOLEAN|STRING|CHAR|DATE|ARRAY|OF)\\b"
+    },
+    "io_and_files": {
+      "name": "support.function.io.pseudocode",
+      "match": "(?i)\\b(OUTPUT|INPUT|OPENFILE|CLOSEFILE|READFILE|WRITEFILE|READ|WRITE|APPEND|RANDOM|SEEK|GETRECORD|PUTRECORD)\\b"
+    },
+    "builtins": {
+      "name": "support.function.builtin.pseudocode",
+      "match": "(?i)\\b(LENGTH|SUBSTRING|MID|LEFT|RIGHT|UCASE|LCASE|NUM_TO_STR|STR_TO_NUM|CHR|ASC|INT|ROUND|RND|EOF)\\b"
+    },
+    "identifiers": {
+      "name": "variable.other.pseudocode",
+      "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+    }
+  }
+}

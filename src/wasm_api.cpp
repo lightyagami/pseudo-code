@@ -7,6 +7,7 @@
 #include "parser.h"
 #include "sema.h"
 #include "vm.h"
+#include "formatter.h"
 
 #include <iostream>
 #include <sstream>
@@ -224,6 +225,20 @@ const char* wasm_c_to_pseudo(const char* c_source) {
         g_result = translateCToPseudocode(c_source);
     } catch (const std::exception& ex) {
         g_result = std::string("Error decompiling C: ") + ex.what();
+    }
+    return g_result.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char* wasm_format(const char* source) {
+    if (!source) {
+        g_result = "";
+        return g_result.c_str();
+    }
+    try {
+        g_result = Formatter::format(source);
+    } catch (...) {
+        g_result = source;
     }
     return g_result.c_str();
 }

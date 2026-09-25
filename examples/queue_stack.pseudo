@@ -1,0 +1,90 @@
+// Cambridge 9618 Paper 4: Stack and Linear Queue Implementation
+
+// --- Stack Implementation (LIFO) ---
+DECLARE Stack : ARRAY[1:5] OF INTEGER
+DECLARE TopOfStack : INTEGER
+DECLARE MaxStack : INTEGER
+
+MaxStack <- 5
+TopOfStack <- 0
+
+PROCEDURE Push(Item : INTEGER)
+    IF TopOfStack = MaxStack THEN
+        OUTPUT "Stack Overflow: Cannot push ", Item
+    ELSE
+        TopOfStack <- TopOfStack + 1
+        Stack[TopOfStack] <- Item
+        OUTPUT "Pushed: ", Item, " (Top at ", TopOfStack, ")"
+    ENDIF
+ENDPROCEDURE
+
+FUNCTION Pop() RETURNS INTEGER
+    DECLARE PoppedValue : INTEGER
+    IF TopOfStack = 0 THEN
+        OUTPUT "Stack Underflow: Stack is empty"
+        RETURN -1
+    ELSE
+        PoppedValue <- Stack[TopOfStack]
+        TopOfStack <- TopOfStack - 1
+        RETURN PoppedValue
+    ENDIF
+ENDFUNCTION
+
+// --- Linear Queue Implementation (FIFO) ---
+DECLARE Queue : ARRAY[1:5] OF STRING
+DECLARE HeadPointer : INTEGER
+DECLARE TailPointer : INTEGER
+DECLARE MaxQueue : INTEGER
+
+MaxQueue <- 5
+HeadPointer <- -1
+TailPointer <- 0
+
+PROCEDURE Enqueue(Item : STRING)
+    IF TailPointer = MaxQueue THEN
+        OUTPUT "Queue Full: Cannot enqueue '", Item, "'"
+    ELSE
+        TailPointer <- TailPointer + 1
+        Queue[TailPointer] <- Item
+        IF HeadPointer = -1 THEN
+            HeadPointer <- 1
+        ENDIF
+        OUTPUT "Enqueued: '", Item, "' (Tail at ", TailPointer, ")"
+    ENDIF
+ENDPROCEDURE
+
+FUNCTION Dequeue() RETURNS STRING
+    DECLARE DequeuedItem : STRING
+    IF HeadPointer = -1 OR HeadPointer > TailPointer THEN
+        OUTPUT "Queue Empty: Cannot dequeue"
+        RETURN ""
+    ELSE
+        DequeuedItem <- Queue[HeadPointer]
+        HeadPointer <- HeadPointer + 1
+        RETURN DequeuedItem
+    ENDIF
+ENDFUNCTION
+
+// Driver Code
+OUTPUT "=== STACK DEMO ==="
+Push(100)
+Push(200)
+Push(300)
+OUTPUT "Popped from stack: ", Pop()
+OUTPUT "Popped from stack: ", Pop()
+Push(400)
+OUTPUT "Popped from stack: ", Pop()
+OUTPUT "Popped from stack: ", Pop()
+OUTPUT "Popped from stack: ", Pop()
+
+OUTPUT ""
+OUTPUT "=== QUEUE DEMO ==="
+Enqueue("First")
+Enqueue("Second")
+Enqueue("Third")
+OUTPUT "Dequeued: ", Dequeue()
+Enqueue("Fourth")
+OUTPUT "Dequeued: ", Dequeue()
+OUTPUT "Dequeued: ", Dequeue()
+OUTPUT "Dequeued: ", Dequeue()
+OUTPUT "Dequeued: ", Dequeue()

@@ -9,6 +9,7 @@
 #include "sema.h"
 #include "vm.h"
 
+#include "formatter.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -23,6 +24,7 @@ static void usage() {
               << "  -p, --emit-py         Compile pseudocode and emit Python 3 source code\n"
               << "  -r, --c-to-pseudo     Decompile/transpile C source code to Cambridge pseudocode\n"
               << "  -d, --dump-bc         Disassemble and print bytecode without executing\n"
+              << "  -f, --format          Format and pretty-print Cambridge pseudocode\n"
               << "  --check, --parse-only Check syntax and types without executing or emitting code\n"
               << "  -i, --repl            Run interactive REPL (powered by VM)\n"
               << "  -h, --help            Show this help message\n\n"
@@ -32,6 +34,12 @@ static void usage() {
 }
 
 static bool readFile(const std::string& path, std::string& out) {
+    if (path == "-") {
+        std::ostringstream ss;
+        ss << std::cin.rdbuf();
+        out = ss.str();
+        return true;
+    }
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     std::ostringstream ss;
@@ -48,6 +56,7 @@ int main(int argc, char** argv) {
     bool dumpBc = false;
     bool cToPseudo = false;
     bool checkOnly = false;
+    bool formatCode = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -57,13 +66,14 @@ int main(int argc, char** argv) {
         else if (arg == "-p" || arg == "--emit-py" || arg == "--emit-python") { emitPy = true; }
         else if (arg == "-r" || arg == "--reverse" || arg == "--c-to-pseudo") { cToPseudo = true; }
         else if (arg == "-d" || arg == "--dump-bc" || arg == "--dump-bytecode") { dumpBc = true; }
+        else if (arg == "-f" || arg == "--format") { formatCode = true; }
         else if (arg == "--check" || arg == "--parse-only") { checkOnly = true; }
         else if (arg == "-o" && i + 1 < argc) { outPath = argv[++i]; }
         else if (inPath.empty()) { inPath = arg; }
         else { usage(); return 2; }
     }
 
-    if (interactive || (inPath.empty() && outPath.empty() && !emitC && !emitPy && !dumpBc && !cToPseudo && !checkOnly)) {
+    if (interactive || (inPath.empty() && outPath.empty() && !emitC && !emitPy && !dumpBc && !cToPseudo && !checkOnly && !formatCode)) {
         runRepl();
         return 0;
     }
@@ -77,6 +87,21 @@ int main(int argc, char** argv) {
     if (!readFile(inPath, source)) {
         std::cerr << "pseudoc: cannot open '" << inPath << "'\n";
         return 2;
+    }
+
+    if (formatCode) {
+        std::string formatted = Formatter::format(source);
+        if (outPath.empty()) {
+            std::cout << formatted;
+        } else {
+            std::ofstream out(outPath);
+            if (!out) {
+                std::cerr << "pseudoc: cannot write '" << outPath << "'\n";
+                return 2;
+            }
+            out << formatted;
+        }
+        return 0;
     }
 
     // Auto-detect C file if extension is .c and neither emitC nor dumpBc is set

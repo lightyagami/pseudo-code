@@ -1,0 +1,110 @@
+// Cambridge 9618 Paper 4: Array-Based Binary Search Tree (BST)
+
+TYPE TreeNode
+    DECLARE LeftPointer  : INTEGER
+    DECLARE Data         : INTEGER
+    DECLARE RightPointer : INTEGER
+ENDTYPE
+
+DECLARE Tree : ARRAY[1:10] OF TreeNode
+DECLARE RootPointer : INTEGER
+DECLARE FreePointer : INTEGER
+DECLARE i : INTEGER
+
+PROCEDURE InitialiseTree()
+    RootPointer <- -1
+    FreePointer <- 1
+    FOR i <- 1 TO 9
+        Tree[i].LeftPointer <- i + 1
+        Tree[i].Data <- 0
+        Tree[i].RightPointer <- -1
+    NEXT i
+    Tree[10].LeftPointer <- -1
+    Tree[10].Data <- 0
+    Tree[10].RightPointer <- -1
+ENDPROCEDURE
+
+PROCEDURE InsertNode(NewItem : INTEGER)
+    DECLARE NewNodeIndex : INTEGER
+    DECLARE CurrentPointer : INTEGER
+    DECLARE PreviousPointer : INTEGER
+    DECLARE TurnedLeft : BOOLEAN
+
+    IF FreePointer <> -1 THEN
+        NewNodeIndex <- FreePointer
+        FreePointer <- Tree[FreePointer].LeftPointer
+        Tree[NewNodeIndex].LeftPointer <- -1
+        Tree[NewNodeIndex].Data <- NewItem
+        Tree[NewNodeIndex].RightPointer <- -1
+
+        IF RootPointer = -1 THEN
+            RootPointer <- NewNodeIndex
+        ELSE
+            CurrentPointer <- RootPointer
+            TurnedLeft <- FALSE
+            WHILE CurrentPointer <> -1
+                PreviousPointer <- CurrentPointer
+                IF NewItem < Tree[CurrentPointer].Data THEN
+                    TurnedLeft <- TRUE
+                    CurrentPointer <- Tree[CurrentPointer].LeftPointer
+                ELSE
+                    TurnedLeft <- FALSE
+                    CurrentPointer <- Tree[CurrentPointer].RightPointer
+                ENDIF
+            ENDWHILE
+
+            IF TurnedLeft = TRUE THEN
+                Tree[PreviousPointer].LeftPointer <- NewNodeIndex
+            ELSE
+                Tree[PreviousPointer].RightPointer <- NewNodeIndex
+            ENDIF
+        ENDIF
+    ELSE
+        OUTPUT "Error: Tree is full"
+    ENDIF
+ENDPROCEDURE
+
+PROCEDURE InOrderTraversal(Pointer : INTEGER)
+    IF Pointer <> -1 THEN
+        InOrderTraversal(Tree[Pointer].LeftPointer)
+        OUTPUT "Value: ", Tree[Pointer].Data, " [at index ", Pointer, "]"
+        InOrderTraversal(Tree[Pointer].RightPointer)
+    ENDIF
+ENDPROCEDURE
+
+FUNCTION SearchTree(Target : INTEGER) RETURNS INTEGER
+    DECLARE Current : INTEGER
+    Current <- RootPointer
+    WHILE Current <> -1
+        IF Tree[Current].Data = Target THEN
+            RETURN Current
+        ELSE
+            IF Target < Tree[Current].Data THEN
+                Current <- Tree[Current].LeftPointer
+            ELSE
+                Current <- Tree[Current].RightPointer
+            ENDIF
+        ENDIF
+    ENDWHILE
+    RETURN -1
+ENDFUNCTION
+
+// Driver Code
+InitialiseTree()
+
+OUTPUT "Inserting items: 50, 25, 75, 10, 30, 60, 85"
+InsertNode(50)
+InsertNode(25)
+InsertNode(75)
+InsertNode(10)
+InsertNode(30)
+InsertNode(60)
+InsertNode(85)
+
+OUTPUT ""
+OUTPUT "--- In-Order Traversal (Sorted Output) ---"
+InOrderTraversal(RootPointer)
+
+OUTPUT ""
+OUTPUT "Search for 60: Index = ", SearchTree(60)
+OUTPUT "Search for 99: Index = ", SearchTree(99)

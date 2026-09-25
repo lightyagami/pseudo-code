@@ -1,0 +1,46 @@
+{
+  "name": "pseudocode-cambridge",
+  "displayName": "Cambridge 9618 Pseudocode",
+  "description": "Rich language support and syntax highlighting for Cambridge International A/AS-Level 9618 & 9608 Pseudocode",
+  "version": "1.0.0",
+  "publisher": "lightyagami",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "pseudocode",
+    "cambridge",
+    "9618",
+    "9608",
+    "alevel",
+    "cie"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "pseudocode",
+        "aliases": [
+          "Cambridge Pseudocode",
+          "Pseudocode",
+          "pseudo"
+        ],
+        "extensions": [
+          ".pseudo",
+          ".psc",
+          ".pc"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pseudocode",
+        "scopeName": "source.pseudocode",
+        "path": "./syntaxes/pseudocode.tmLanguage.json"
+      }
+    ]
+  }
+}

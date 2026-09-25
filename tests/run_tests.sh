@@ -160,6 +160,25 @@ for check_f in "tour.pseudo" "tests/test_banking_oop.pseudo" "tests/test_composi
     fi
 done
 
+echo "=== Running Code Formatter Tests (--format) ==="
+formatted_out=$($PSEUDOC --format - << 'EOF'
+declare x:integer
+if x=1 then
+output "one"
+else
+output "other"
+endif
+EOF
+)
+if echo "$formatted_out" | grep -q "DECLARE x : INTEGER" && echo "$formatted_out" | grep -q "    OUTPUT \"one\""; then
+    echo "  [PASS] Code formatter normalizes casing and indentation"
+    PASSED=$((PASSED + 1))
+else
+    echo "  [FAIL] Code formatter produced unexpected output:"
+    echo "$formatted_out"
+    FAILED=$((FAILED + 1))
+fi
+
 echo "=== Running Negative --check Tests (Expected Failures) ==="
 run_negative_check() {
     local desc="$1"
@@ -180,6 +199,66 @@ run_negative_check "Undeclared variable" "undeclared_var <- 42"
 run_negative_check "Arity mismatch" "FUNCTION f(a : INTEGER) RETURNS INTEGER\nRETURN a\nENDFUNCTION\nDECLARE res : INTEGER\nres <- f(1, 2)"
 run_negative_check "Duplicate declaration in same scope" "DECLARE x : INTEGER\nDECLARE x : INTEGER"
 
+echo "=== Running Conformance & Torture Differential Tests ==="
+for t_file in \
+    "tests/torture/t01_bounds.pseudo" \
+    "tests/torture/t02_divmod.pseudo" \
+    "tests/torture/t06_byref.pseudo" \
+    "tests/torture/t07_byref_record.pseudo" \
+    "tests/torture/t08_byval_no_mutate.pseudo" \
+    "tests/torture/t09_fibonacci.pseudo" \
+    "tests/torture/t10_2d_array.pseudo" \
+    "tests/torture/t11_string_concat.pseudo" \
+    "tests/torture/t12_string_funcs.pseudo" \
+    "tests/torture/t13_real_arith.pseudo" \
+    "tests/torture/t14_boolean.pseudo" \
+    "tests/torture/t15_nested_if.pseudo" \
+    "tests/torture/t16_case.pseudo" \
+    "tests/torture/t17_sort_ties.pseudo" \
+    "tests/torture/t18_file_io.pseudo" \
+    "tests/torture/t19_eof.pseudo" \
+    "tests/torture/t20_random_file.pseudo"; do
+    run_test "$t_file" ""
+    if command -v python3 >/dev/null 2>&1; then
+        run_py_test "$t_file" ""
+    fi
+done
+
+run_runtime_error_test() {
+    local desc="$1"
+    local file="$2"
+    local vm_ok=0 c_ok=0 py_ok=0
+
+    # VM should exit non-zero
+    if ! $PSEUDOC "$file" >/dev/null 2>&1; then vm_ok=1; fi
+
+    # C should exit non-zero
+    local c_src="$TMP_DIR/err.c"
+    local c_bin="$TMP_DIR/err.bin"
+    $PSEUDOC "$file" -o "$c_src"
+    gcc -O2 "$c_src" -o "$c_bin" -lm >/dev/null 2>&1
+    if ! "$c_bin" >/dev/null 2>&1; then c_ok=1; fi
+
+    # Python should exit non-zero
+    local py_src="$TMP_DIR/err.py"
+    $PSEUDOC "$file" -o "$py_src"
+    if ! python3 "$py_src" >/dev/null 2>&1; then py_ok=1; fi
+
+    if [ $vm_ok -eq 1 ] && [ $c_ok -eq 1 ] && [ $py_ok -eq 1 ]; then
+        echo "  [PASS] $desc (VM, C, and Python all properly error)"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  [FAIL] $desc: expected error did not trigger on all backends (VM:$vm_ok, C:$c_ok, Py:$py_ok)"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+echo "=== Running Runtime Fault & Overflow Verification (VM, C, Python) ==="
+run_runtime_error_test "Array out-of-bounds access" "tests/torture/t01b_oob.pseudo"
+run_runtime_error_test "64-bit integer addition overflow" "tests/torture/t03_overflow_add.pseudo"
+run_runtime_error_test "64-bit integer multiplication overflow" "tests/torture/t04_overflow_mul.pseudo"
+run_runtime_error_test "Integer division by zero" "tests/torture/t05_divzero.pseudo"
+
 if command -v node >/dev/null 2>&1 && [ -f "web/pseudoc.js" ]; then
     echo "=== Running WebAssembly / Node.js Engine Verification ==="
     if node -e "
@@ -190,6 +269,7 @@ createPseudocModule().then(Module => {
     const emit_c = Module.cwrap('wasm_emit_c', 'string', ['string']);
     const emit_py = Module.cwrap('wasm_emit_py', 'string', ['string']);
     const dump_bc = Module.cwrap('wasm_dump_bytecode', 'string', ['string']);
+    const format = Module.cwrap('wasm_format', 'string', ['string']);
 
     const code = 'DECLARE x : INTEGER\nx <- 42\nOUTPUT \"WASM_OK: \", x';
     const out = run_vm(code, '');
@@ -207,10 +287,13 @@ createPseudocModule().then(Module => {
     const bc = dump_bc(code);
     if (!bc.includes('OP_HALT')) process.exit(1);
 
+    const fmt = format('declare y:integer\noutput y');
+    if (!fmt.includes('DECLARE y : INTEGER')) process.exit(1);
+
     process.exit(0);
 }).catch(() => process.exit(1));
 " >/dev/null 2>&1; then
-        echo "  [PASS] WebAssembly pseudoc engine (VM, C, Python, Bytecode, Check)"
+        echo "  [PASS] WebAssembly pseudoc engine (VM, C, Python, Bytecode, Check, Formatter)"
         PASSED=$((PASSED + 1))
     else
         echo "  [FAIL] WebAssembly engine failed in Node.js runtime!"

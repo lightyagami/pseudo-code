@@ -1,0 +1,76 @@
+// Cambridge 9618 Paper 4: Array-Based Linked List with Free List Pointer
+
+TYPE ListNode
+    DECLARE Data : INTEGER
+    DECLARE NextPointer : INTEGER
+ENDTYPE
+
+DECLARE List : ARRAY[1:10] OF ListNode
+DECLARE HeadPointer : INTEGER
+DECLARE FreeListPointer : INTEGER
+DECLARE i : INTEGER
+
+PROCEDURE InitialiseList()
+    HeadPointer <- -1
+    FreeListPointer <- 1
+    FOR i <- 1 TO 9
+        List[i].NextPointer <- i + 1
+        List[i].Data <- 0
+    NEXT i
+    List[10].NextPointer <- -1
+    List[10].Data <- 0
+ENDPROCEDURE
+
+PROCEDURE InsertNode(NewItem : INTEGER)
+    DECLARE NewNodeIndex : INTEGER
+    DECLARE PreviousNode : INTEGER
+    DECLARE CurrentNode : INTEGER
+
+    IF FreeListPointer <> -1 THEN
+        NewNodeIndex <- FreeListPointer
+        FreeListPointer <- List[FreeListPointer].NextPointer
+        List[NewNodeIndex].Data <- NewItem
+        List[NewNodeIndex].NextPointer <- -1
+
+        PreviousNode <- -1
+        CurrentNode <- HeadPointer
+
+        // Find insertion point to maintain sorted order
+        WHILE CurrentNode <> -1 AND List[CurrentNode].Data < NewItem
+            PreviousNode <- CurrentNode
+            CurrentNode <- List[CurrentNode].NextPointer
+        ENDWHILE
+
+        IF PreviousNode = -1 THEN
+            List[NewNodeIndex].NextPointer <- HeadPointer
+            HeadPointer <- NewNodeIndex
+        ELSE
+            List[NewNodeIndex].NextPointer <- CurrentNode
+            List[PreviousNode].NextPointer <- NewNodeIndex
+        ENDIF
+    ELSE
+        OUTPUT "Error: List is full, cannot insert ", NewItem
+    ENDIF
+ENDPROCEDURE
+
+PROCEDURE PrintList()
+    DECLARE Current : INTEGER
+    Current <- HeadPointer
+    OUTPUT "--- Linked List Contents (Sorted) ---"
+    WHILE Current <> -1
+        OUTPUT "Node [Index ", Current, "]: Data = ", List[Current].Data, ", Next = ", List[Current].NextPointer
+        Current <- List[Current].NextPointer
+    ENDWHILE
+ENDPROCEDURE
+
+// Driver Code
+InitialiseList()
+
+OUTPUT "Inserting items: 45, 12, 89, 34, 2"
+InsertNode(45)
+InsertNode(12)
+InsertNode(89)
+InsertNode(34)
+InsertNode(2)
+
+PrintList()
