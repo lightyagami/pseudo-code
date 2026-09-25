@@ -1,0 +1,10 @@
+DECLARE A : STRING
+DECLARE B : STRING
+DECLARE C : STRING
+
+A <- "Hello"
+B <- "World"
+
+C <- A & " " & B
+
+OUTPUT C

@@ -1,0 +1,11 @@
+PROCEDURE Modify(X : INTEGER)
+    X <- X + 100
+ENDPROCEDURE
+
+DECLARE Number : INTEGER
+
+Number <- 10
+
+CALL Modify(Number)
+
+OUTPUT Number

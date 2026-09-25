@@ -1,0 +1,8 @@
+DECLARE A : ARRAY[5:9] OF INTEGER
+DECLARE i : INTEGER
+
+FOR i <- 5 TO 9
+    A[i] <- i * 10
+NEXT i
+
+OUTPUT A[4]

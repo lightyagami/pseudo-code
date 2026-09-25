@@ -1055,6 +1055,8 @@ ExprPtr Parser::parsePrimary() {
         case Tok::Round:
         case Tok::Rnd:
         case Tok::EofFunc:
+        case Tok::ReadFile:   // READFILE(filename) used as expression
+        case Tok::GetRecord:  // GETRECORD(filename) used as expression
             return parseBuiltInCall(t.type);
 
         case Tok::Div:

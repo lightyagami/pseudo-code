@@ -1,0 +1,17 @@
+DECLARE X : INTEGER
+
+X <- 75
+
+IF X >= 50 THEN
+    IF X >= 70 THEN
+        IF X >= 90 THEN
+            OUTPUT "A"
+        ELSE
+            OUTPUT "B"
+        ENDIF
+    ELSE
+        OUTPUT "C"
+    ENDIF
+ELSE
+    OUTPUT "F"
+ENDIF

@@ -27,6 +27,10 @@ private:
     const std::unordered_map<std::string, Sema::ClassInfo>& classTypes_;
     std::string currentClassName_;
     bool insideClass_ = false;
+    // Maps procedure name -> list of BYREF scalar param indices (for return-unpack pattern)
+    std::unordered_map<std::string, std::vector<size_t>> byrefProcs_;
+    std::vector<size_t> currentProcByrefIndices_;
+    std::vector<std::string> currentProcParamNames_;
 
     std::ostringstream out_;
     int indent_ = 0;

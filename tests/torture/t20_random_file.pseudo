@@ -1,0 +1,22 @@
+DECLARE FileName : STRING
+DECLARE Value : STRING
+
+FileName <- "random_torture.txt"
+
+OPENFILE FileName FOR RANDOM
+
+SEEK FileName, 1
+PUTRECORD FileName, "Alice"
+
+SEEK FileName, 2
+PUTRECORD FileName, "Bob"
+
+SEEK FileName, 3
+PUTRECORD FileName, "Charlie"
+
+SEEK FileName, 2
+Value <- GETRECORD(FileName)
+
+OUTPUT Value
+
+CLOSEFILE FileName

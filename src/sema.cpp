@@ -1141,6 +1141,16 @@ TypeInfo Sema::computeCall(CallExpr& c) {
                 requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "EOF argument (filename)");
             }
             return {BaseType::Boolean, "", false, 0, 0, 0, 0, 0};
+        case Tok::ReadFile:
+            if (checkArgCount(1)) {
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "READFILE argument (filename)");
+            }
+            return {BaseType::String, "", false, 0, 0, 0, 0, 0};
+        case Tok::GetRecord:
+            if (checkArgCount(1)) {
+                requireType(*c.args[0], typeOf(*c.args[0]), BaseType::String, "GETRECORD argument (filename)");
+            }
+            return {BaseType::String, "", false, 0, 0, 0, 0, 0};
         default:
             return errType;
     }

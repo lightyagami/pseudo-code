@@ -6,6 +6,23 @@ PyCodeGen::PyCodeGen(const std::vector<std::pair<std::string, TypeInfo>>& vars,
                      const std::unordered_map<std::string, Sema::ClassInfo>& classes)
     : vars_(vars), recordTypes_(records), functions_(funcs), classTypes_(classes) {
     for (const auto& v : vars_) varMap_[v.first] = v.second;
+    for (const auto& kv : functions_) {
+        const auto& fn = kv.second;
+        if (!fn.isFunction) {
+            std::vector<size_t> indices;
+            for (size_t i = 0; i < fn.params.size(); ++i) {
+                const auto& p = fn.params[i];
+                if (p.isByRef && !p.type.isArray &&
+                    p.type.base != BaseType::Record &&
+                    p.type.base != BaseType::Object) {
+                    indices.push_back(i);
+                }
+            }
+            if (!indices.empty()) {
+                byrefProcs_[fn.name] = indices;
+            }
+        }
+    }
 }
 
 void PyCodeGen::line(const std::string& text) {
@@ -247,6 +264,7 @@ void PyCodeGen::emitFunctions(const Block& program) {
     for (const auto& s : program) {
         if (s->kind == Stmt::Kind::ProcedureDecl) {
             auto& p = static_cast<const ProcedureDeclStmt&>(*s);
+
             std::string sig = "def " + p.name + "(";
             for (size_t i = 0; i < p.params.size(); ++i) {
                 if (i > 0) sig += ", ";
@@ -260,11 +278,38 @@ void PyCodeGen::emitFunctions(const Block& program) {
                     line(param.name + " = copy.deepcopy(" + param.name + ")");
                 }
             }
+
+            auto it = byrefProcs_.find(p.name);
+            const std::vector<size_t>* byrefIndices = (it != byrefProcs_.end()) ? &it->second : nullptr;
+            currentProcByrefIndices_ = byrefIndices ? *byrefIndices : std::vector<size_t>{};
+            currentProcParamNames_.clear();
+            for (const auto& param : p.params) currentProcParamNames_.push_back(param.name);
+
             if (p.body.empty()) {
-                line("pass");
+                if (byrefIndices && !byrefIndices->empty()) {
+                    std::string ret = "return (";
+                    for (size_t idx : *byrefIndices) {
+                        ret += p.params[idx].name + ", ";
+                    }
+                    ret += ")";
+                    line(ret);
+                } else {
+                    line("pass");
+                }
             } else {
                 for (const auto& stmt : p.body) emitStmt(*stmt);
+                // At end of procedure, return BYREF scalar values
+                if (byrefIndices && !byrefIndices->empty()) {
+                    std::string ret = "return (";
+                    for (size_t idx : *byrefIndices) {
+                        ret += p.params[idx].name + ", ";
+                    }
+                    ret += ")";
+                    line(ret);
+                }
             }
+            currentProcByrefIndices_.clear();
+            currentProcParamNames_.clear();
             --indent_;
             line("");
         } else if (s->kind == Stmt::Kind::FunctionDecl) {
@@ -423,15 +468,38 @@ void PyCodeGen::emitStmt(const Stmt& s) {
                     s += expr(*c.args[i]);
                 }
                 s += ")";
-                line(s);
+
+                auto it = byrefProcs_.find(c.name);
+                std::string lhsUnpack;
+                if (it != byrefProcs_.end() && !it->second.empty()) {
+                    for (size_t idx : it->second) {
+                        if (idx < c.args.size()) {
+                            if (!lhsUnpack.empty()) lhsUnpack += ", ";
+                            lhsUnpack += expr(*c.args[idx]);
+                        }
+                    }
+                    if (it->second.size() == 1) lhsUnpack += ",";
+                    lhsUnpack += " = ";
+                }
+                line(lhsUnpack + s);
             }
             break;
         }
 
         case Stmt::Kind::Return: {
             auto& r = static_cast<const ReturnStmt&>(s);
-            if (r.value) line("return " + expr(*r.value));
-            else line("return");
+            if (r.value) {
+                line("return " + expr(*r.value));
+            } else if (!currentProcByrefIndices_.empty()) {
+                std::string ret = "return (";
+                for (size_t idx : currentProcByrefIndices_) {
+                    ret += currentProcParamNames_[idx] + ", ";
+                }
+                ret += ")";
+                line(ret);
+            } else {
+                line("return");
+            }
             break;
         }
 
@@ -776,6 +844,10 @@ std::string PyCodeGen::call(const CallExpr& c) {
             return "(" + expr(*c.args[0]) + " // " + expr(*c.args[1]) + ")";
         case Tok::EofFunc:
             return "_pc_eof(" + expr(*c.args[0]) + ")";
+        case Tok::ReadFile:
+            return "_pc_read(" + expr(*c.args[0]) + ")";
+        case Tok::GetRecord:
+            return "_pc_get_record(" + expr(*c.args[0]) + ")";
         default:
             return "None";
     }

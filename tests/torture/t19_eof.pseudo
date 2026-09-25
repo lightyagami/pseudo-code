@@ -1,0 +1,13 @@
+DECLARE FileName : STRING
+DECLARE Line : STRING
+
+FileName <- "test_torture.txt"
+
+OPENFILE FileName FOR READ
+
+WHILE NOT EOF(FileName)
+    Line <- READFILE(FileName)
+    OUTPUT Line
+ENDWHILE
+
+CLOSEFILE FileName

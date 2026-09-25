@@ -1511,6 +1511,10 @@ std::string CodeGen::call(const CallExpr& c) {
             return "pcrt_div(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::EofFunc:
             return "pcrt_eof(" + expr(*c.args[0]) + ")";
+        case Tok::ReadFile:
+            return "(char*)pcrt_track(strdup(pcrt_read_file_line(" + expr(*c.args[0]) + ")))";
+        case Tok::GetRecord:
+            return "pcrt_get_record_line(" + expr(*c.args[0]) + ")";
         default:
             return "";
     }

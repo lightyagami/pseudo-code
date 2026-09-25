@@ -1,0 +1,23 @@
+DECLARE Choice : INTEGER
+
+Choice <- 4
+
+CASE OF Choice
+    1 : OUTPUT "ONE"
+    2 : OUTPUT "TWO"
+    3 : OUTPUT "THREE"
+    4 : OUTPUT "FOUR"
+    5 : OUTPUT "FIVE"
+    OTHERWISE : OUTPUT "OTHER"
+ENDCASE
+
+Choice <- 99
+
+CASE OF Choice
+    1 : OUTPUT "ONE"
+    2 : OUTPUT "TWO"
+    3 : OUTPUT "THREE"
+    4 : OUTPUT "FOUR"
+    5 : OUTPUT "FIVE"
+    OTHERWISE : OUTPUT "OTHER"
+ENDCASE

@@ -1,0 +1,11 @@
+PROCEDURE Increment(BYREF X : INTEGER)
+    X <- X + 1
+ENDPROCEDURE
+
+DECLARE Number : INTEGER
+
+Number <- 41
+
+CALL Increment(Number)
+
+OUTPUT Number

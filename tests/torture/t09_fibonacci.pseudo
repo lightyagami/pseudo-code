@@ -1,0 +1,13 @@
+FUNCTION Fibonacci(N : INTEGER) RETURNS INTEGER
+    IF N <= 1 THEN
+        RETURN N
+    ELSE
+        RETURN Fibonacci(N - 1) + Fibonacci(N - 2)
+    ENDIF
+ENDFUNCTION
+
+DECLARE i : INTEGER
+
+FOR i <- 0 TO 10
+    OUTPUT Fibonacci(i)
+NEXT i

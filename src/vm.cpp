@@ -1076,7 +1076,11 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                     runtimeErr("64-bit integer division overflow", inst.line);
                     return 1;
                 }
-                push(Value::makeInt(a.asInt() / b.asInt()));
+                // Floor division (toward -inf), matching Cambridge pseudocode spec
+                int64_t q = a.asInt() / b.asInt();
+                int64_t r = a.asInt() % b.asInt();
+                if ((r != 0) && ((r < 0) ^ (b.asInt() < 0))) q--;
+                push(Value::makeInt(q));
                 break;
             }
 
@@ -1087,7 +1091,10 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                     runtimeErr("Modulo (MOD) by zero", inst.line);
                     return 1;
                 }
-                push(Value::makeInt(a.asInt() % b.asInt()));
+                // Floor modulo (sign follows divisor), matching Cambridge pseudocode spec
+                int64_t r = a.asInt() % b.asInt();
+                if ((r != 0) && ((r < 0) ^ (b.asInt() < 0))) r += b.asInt();
+                push(Value::makeInt(r));
                 break;
             }
 

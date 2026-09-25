@@ -1073,6 +1073,8 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
                 case Tok::Mod:       emit(OpCode::OpMod, 0, 0, 0, 0, c.line); break;
                 case Tok::Div:       emit(OpCode::OpDivInt, 0, 0, 0, 0, c.line); break;
                 case Tok::EofFunc:   emit(OpCode::OpEof, 0, 0, 0, 0, c.line); break;
+                case Tok::ReadFile:  emit(OpCode::OpReadFile, static_cast<int>(BaseType::String), 0, 0, 0, c.line); break;
+                case Tok::GetRecord: emit(OpCode::OpGetRecord, static_cast<int>(BaseType::String), -1, 0, 0, c.line); break;
                 default: break;
             }
             break;

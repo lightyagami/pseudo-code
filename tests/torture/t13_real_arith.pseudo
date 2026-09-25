@@ -1,0 +1,11 @@
+DECLARE A : REAL
+DECLARE B : REAL
+DECLARE C : REAL
+
+A <- 10
+B <- 3
+
+C <- A / B
+
+OUTPUT C
+OUTPUT C * 3

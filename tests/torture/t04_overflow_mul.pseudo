@@ -1,0 +1,6 @@
+DECLARE X : INTEGER
+
+X <- 3037000500
+X <- X * X
+
+OUTPUT X

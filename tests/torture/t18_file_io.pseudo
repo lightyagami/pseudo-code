@@ -1,0 +1,21 @@
+DECLARE FileName : STRING
+DECLARE Line : STRING
+
+FileName <- "test_torture.txt"
+
+OPENFILE FileName FOR WRITE
+
+WRITEFILE FileName, "Hello"
+WRITEFILE FileName, "World"
+
+CLOSEFILE FileName
+
+OPENFILE FileName FOR READ
+
+Line <- READFILE(FileName)
+OUTPUT Line
+
+Line <- READFILE(FileName)
+OUTPUT Line
+
+CLOSEFILE FileName

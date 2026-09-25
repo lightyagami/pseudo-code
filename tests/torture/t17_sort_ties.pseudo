@@ -1,0 +1,50 @@
+TYPE Student
+    DECLARE ID : INTEGER
+    DECLARE Average : REAL
+ENDTYPE
+
+PROCEDURE Swap(BYREF A : Student, BYREF B : Student)
+    DECLARE T : Student
+    T <- A
+    A <- B
+    B <- T
+ENDPROCEDURE
+
+DECLARE Students : ARRAY[1:4] OF Student
+DECLARE i : INTEGER
+DECLARE j : INTEGER
+DECLARE MinIdx : INTEGER
+
+Students[1].ID <- 400
+Students[1].Average <- 80
+
+Students[2].ID <- 100
+Students[2].Average <- 80
+
+Students[3].ID <- 300
+Students[3].Average <- 90
+
+Students[4].ID <- 200
+Students[4].Average <- 70
+
+FOR i <- 1 TO 3
+    MinIdx <- i
+    FOR j <- i + 1 TO 4
+        IF Students[j].Average > Students[MinIdx].Average THEN
+            MinIdx <- j
+        ELSE
+            IF Students[j].Average = Students[MinIdx].Average THEN
+                IF Students[j].ID < Students[MinIdx].ID THEN
+                    MinIdx <- j
+                ENDIF
+            ENDIF
+        ENDIF
+    NEXT j
+    IF MinIdx <> i THEN
+        Swap(Students[i], Students[MinIdx])
+    ENDIF
+NEXT i
+
+FOR i <- 1 TO 4
+    OUTPUT Students[i].ID, " ", Students[i].Average
+NEXT i

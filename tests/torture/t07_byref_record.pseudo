@@ -1,0 +1,19 @@
+TYPE Person
+    DECLARE Age : INTEGER
+    DECLARE Score : INTEGER
+ENDTYPE
+
+PROCEDURE Modify(BYREF P : Person)
+    P.Age <- P.Age + 10
+    P.Score <- P.Score * 2
+ENDPROCEDURE
+
+DECLARE Person1 : Person
+
+Person1.Age <- 20
+Person1.Score <- 50
+
+CALL Modify(Person1)
+
+OUTPUT Person1.Age
+OUTPUT Person1.Score
