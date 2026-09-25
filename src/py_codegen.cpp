@@ -120,6 +120,7 @@ void PyCodeGen::emitImports() {
     line("def _pc_str(v):");
     line("    if v is True: return 'TRUE'");
     line("    if v is False: return 'FALSE'");
+    line("    if isinstance(v, float): return f'{v:.10g}'");
     line("    return str(v)");
     line("");
 }
@@ -133,7 +134,20 @@ void PyCodeGen::emitRecordClasses() {
         ++indent_;
         for (const auto& f : rdef.fields) {
             std::string defVal = "0";
-            if (f.type.base == BaseType::Real) defVal = "0.0";
+            if (f.type.isArray) {
+                int64_t n1 = f.type.upper1 + 1;
+                std::string elemInit = "0";
+                if (f.type.base == BaseType::Record) elemInit = f.type.recordName + "()";
+                else if (f.type.base == BaseType::Real) elemInit = "0.0";
+                else if (f.type.base == BaseType::Boolean) elemInit = "False";
+                else if (f.type.base == BaseType::String || f.type.base == BaseType::Char) elemInit = "''";
+                if (f.type.dims == 1) {
+                    defVal = "[" + elemInit + " for _ in range(" + std::to_string(n1) + ")]";
+                } else {
+                    int64_t n2 = f.type.upper2 + 1;
+                    defVal = "[[" + elemInit + " for _ in range(" + std::to_string(n2) + ")] for _ in range(" + std::to_string(n1) + ")]";
+                }
+            } else if (f.type.base == BaseType::Real) defVal = "0.0";
             else if (f.type.base == BaseType::Boolean) defVal = "False";
             else if (f.type.base == BaseType::String || f.type.base == BaseType::Char) defVal = "''";
             else if (f.type.base == BaseType::Record) defVal = f.type.recordName + "()";
@@ -333,6 +347,8 @@ void PyCodeGen::emitStmt(const Stmt& s) {
             }
             if (a.value->type.isArray) {
                 line(lhs + " = copy.deepcopy(" + expr(*a.value) + ")");
+            } else if (a.value->type.base == BaseType::Record) {
+                line(lhs + ".__dict__.update(copy.deepcopy(" + expr(*a.value) + ").__dict__)");
             } else {
                 line(lhs + " = " + expr(*a.value));
             }

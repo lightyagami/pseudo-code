@@ -92,16 +92,16 @@ void CodeGen::emitRuntimeHeaders() {
          << "#include <math.h>\n\n"
          << "// --- Pseudoc Runtime Core & Dynamic Memory Tracker ---\n"
          << "typedef struct PC_Node { void* ptr; struct PC_Node* next; } PC_Node;\n"
-         << "static PC_Node* pc_gc_head = NULL;\n"
-         << "static void* pc_track(void* p) {\n"
+         << "static PC_Node* pcrt_gc_head = NULL;\n"
+         << "static void* pcrt_track(void* p) {\n"
          << "    if (!p) return NULL;\n"
          << "    PC_Node* n = (PC_Node*)malloc(sizeof(PC_Node));\n"
-         << "    n->ptr = p; n->next = pc_gc_head; pc_gc_head = n;\n"
+         << "    n->ptr = p; n->next = pcrt_gc_head; pcrt_gc_head = n;\n"
          << "    return p;\n"
          << "}\n"
          << "// --- File I/O Runtime Tracker ---\n"
          << "typedef struct PC_File { char name[256]; FILE* fp; struct PC_File* next; } PC_File;\n"
-         << "static PC_File* pc_files_head = NULL;\n"
+         << "static PC_File* pcrt_files_head = NULL;\n"
          << "// --- Random File I/O Runtime ---\n"
          << "typedef struct PC_RandomFile {\n"
          << "    char name[256];\n"
@@ -111,8 +111,8 @@ void CodeGen::emitRuntimeHeaders() {
          << "    int64_t current_record;\n"
          << "    struct PC_RandomFile* next;\n"
          << "} PC_RandomFile;\n"
-         << "static PC_RandomFile* pc_random_head = NULL;\n"
-         << "static void pc_open_random(const char* name) {\n"
+         << "static PC_RandomFile* pcrt_random_head = NULL;\n"
+         << "static void pcrt_open_random(const char* name) {\n"
          << "    PC_RandomFile* rf = (PC_RandomFile*)calloc(1, sizeof(PC_RandomFile));\n"
          << "    strncpy(rf->name, name, sizeof(rf->name) - 1);\n"
          << "    rf->current_record = 1;\n"
@@ -133,24 +133,24 @@ void CodeGen::emitRuntimeHeaders() {
          << "        }\n"
          << "        fclose(fp);\n"
          << "    }\n"
-         << "    rf->next = pc_random_head;\n"
-         << "    pc_random_head = rf;\n"
+         << "    rf->next = pcrt_random_head;\n"
+         << "    pcrt_random_head = rf;\n"
          << "}\n"
-         << "static PC_RandomFile* pc_get_random(const char* name) {\n"
-         << "    PC_RandomFile* cur = pc_random_head;\n"
+         << "static PC_RandomFile* pcrt_get_random(const char* name) {\n"
+         << "    PC_RandomFile* cur = pcrt_random_head;\n"
          << "    while (cur) {\n"
          << "        if (strcmp(cur->name, name) == 0) return cur;\n"
          << "        cur = cur->next;\n"
          << "    }\n"
          << "    return NULL;\n"
          << "}\n"
-         << "static void pc_seek_random(const char* name, int64_t addr) {\n"
-         << "    PC_RandomFile* rf = pc_get_random(name);\n"
+         << "static void pcrt_seek_random(const char* name, int64_t addr) {\n"
+         << "    PC_RandomFile* rf = pcrt_get_random(name);\n"
          << "    if (!rf) { fprintf(stderr, \"Runtime Error: File '%s' not open for RANDOM\\n\", name); exit(1); }\n"
          << "    rf->current_record = addr < 1 ? 1 : addr;\n"
          << "}\n"
-         << "static void pc_put_record_line(const char* name, const char* str) {\n"
-         << "    PC_RandomFile* rf = pc_get_random(name);\n"
+         << "static void pcrt_put_record_line(const char* name, const char* str) {\n"
+         << "    PC_RandomFile* rf = pcrt_get_random(name);\n"
          << "    if (!rf) { fprintf(stderr, \"Runtime Error: File '%s' not open for RANDOM\\n\", name); exit(1); }\n"
          << "    size_t target_idx = (size_t)((rf->current_record < 1 ? 1 : rf->current_record) - 1);\n"
          << "    while (rf->count <= target_idx) {\n"
@@ -164,8 +164,8 @@ void CodeGen::emitRuntimeHeaders() {
          << "    rf->lines[target_idx] = strdup(str);\n"
          << "    rf->current_record++;\n"
          << "}\n"
-         << "static char* pc_get_record_line(const char* name) {\n"
-         << "    PC_RandomFile* rf = pc_get_random(name);\n"
+         << "static char* pcrt_get_record_line(const char* name) {\n"
+         << "    PC_RandomFile* rf = pcrt_get_random(name);\n"
          << "    if (!rf) { fprintf(stderr, \"Runtime Error: File '%s' not open for RANDOM\\n\", name); exit(1); }\n"
          << "    size_t target_idx = (size_t)((rf->current_record < 1 ? 1 : rf->current_record) - 1);\n"
          << "    char* res = \"\";\n"
@@ -175,8 +175,8 @@ void CodeGen::emitRuntimeHeaders() {
          << "    rf->current_record++;\n"
          << "    return res;\n"
          << "}\n"
-         << "static void pc_close_random(const char* name) {\n"
-         << "    PC_RandomFile** cur = &pc_random_head;\n"
+         << "static void pcrt_close_random(const char* name) {\n"
+         << "    PC_RandomFile** cur = &pcrt_random_head;\n"
          << "    while (*cur) {\n"
          << "        if (strcmp((*cur)->name, name) == 0) {\n"
          << "            PC_RandomFile* to_del = *cur;\n"
@@ -196,7 +196,7 @@ void CodeGen::emitRuntimeHeaders() {
          << "        cur = &((*cur)->next);\n"
          << "    }\n"
          << "}\n"
-         << "static char* pc_next_record_field(char** cursor) {\n"
+         << "static char* pcrt_next_record_field(char** cursor) {\n"
          << "    if (!cursor || !*cursor) return \"\";\n"
          << "    char* start = *cursor;\n"
          << "    char* bar = strchr(start, '|');\n"
@@ -208,8 +208,8 @@ void CodeGen::emitRuntimeHeaders() {
          << "    }\n"
          << "    return start;\n"
          << "}\n"
-         << "static void pc_open_file(const char* name, const char* mode) {\n"
-         << "    if (strcmp(mode, \"RANDOM\") == 0) { pc_open_random(name); return; }\n"
+         << "static void pcrt_open_file(const char* name, const char* mode) {\n"
+         << "    if (strcmp(mode, \"RANDOM\") == 0) { pcrt_open_random(name); return; }\n"
          << "    const char* m = \"r\";\n"
          << "    if (strcmp(mode, \"WRITE\") == 0) m = \"w\";\n"
          << "    else if (strcmp(mode, \"APPEND\") == 0) m = \"a\";\n"
@@ -217,10 +217,10 @@ void CodeGen::emitRuntimeHeaders() {
          << "    if (!fp) { fprintf(stderr, \"Runtime Error: Cannot open file '%s' for %s\\n\", name, mode); exit(1); }\n"
          << "    PC_File* f = (PC_File*)malloc(sizeof(PC_File));\n"
          << "    strncpy(f->name, name, sizeof(f->name) - 1); f->name[sizeof(f->name) - 1] = '\\0';\n"
-         << "    f->fp = fp; f->next = pc_files_head; pc_files_head = f;\n"
+         << "    f->fp = fp; f->next = pcrt_files_head; pcrt_files_head = f;\n"
          << "}\n"
-         << "static FILE* pc_get_file(const char* name) {\n"
-         << "    PC_File* cur = pc_files_head;\n"
+         << "static FILE* pcrt_get_file(const char* name) {\n"
+         << "    PC_File* cur = pcrt_files_head;\n"
          << "    while (cur) {\n"
          << "        if (strcmp(cur->name, name) == 0) return cur->fp;\n"
          << "        cur = cur->next;\n"
@@ -228,9 +228,9 @@ void CodeGen::emitRuntimeHeaders() {
          << "    fprintf(stderr, \"Runtime Error: File '%s' is not open\\n\", name); exit(1);\n"
          << "    return NULL;\n"
          << "}\n"
-         << "static void pc_close_file(const char* name) {\n"
-         << "    if (pc_get_random(name)) { pc_close_random(name); return; }\n"
-         << "    PC_File** cur = &pc_files_head;\n"
+         << "static void pcrt_close_file(const char* name) {\n"
+         << "    if (pcrt_get_random(name)) { pcrt_close_random(name); return; }\n"
+         << "    PC_File** cur = &pcrt_files_head;\n"
          << "    while (*cur) {\n"
          << "        if (strcmp((*cur)->name, name) == 0) {\n"
          << "            PC_File* to_del = *cur;\n"
@@ -242,195 +242,195 @@ void CodeGen::emitRuntimeHeaders() {
          << "        cur = &((*cur)->next);\n"
          << "    }\n"
          << "}\n"
-         << "static char* pc_read_file_line(const char* name) {\n"
-         << "    FILE* fp = pc_get_file(name);\n"
+         << "static char* pcrt_read_file_line(const char* name) {\n"
+         << "    FILE* fp = pcrt_get_file(name);\n"
          << "    static char fbuf[4096];\n"
          << "    if (!fgets(fbuf, sizeof(fbuf), fp)) fbuf[0] = '\\0';\n"
          << "    size_t len = strlen(fbuf);\n"
          << "    while (len > 0 && (fbuf[len - 1] == '\\n' || fbuf[len - 1] == '\\r')) fbuf[--len] = '\\0';\n"
-         << "    return (char*)pc_track(strdup(fbuf));\n"
+         << "    return (char*)pcrt_track(strdup(fbuf));\n"
          << "}\n"
-         << "static void pc_write_file_line(const char* name, const char* str) {\n"
-         << "    FILE* fp = pc_get_file(name);\n"
+         << "static void pcrt_write_file_line(const char* name, const char* str) {\n"
+         << "    FILE* fp = pcrt_get_file(name);\n"
          << "    fprintf(fp, \"%s\\n\", str);\n"
          << "}\n"
-         << "static bool pc_eof(const char* name) {\n"
-         << "    PC_RandomFile* rf = pc_get_random(name);\n"
+         << "static bool pcrt_eof(const char* name) {\n"
+         << "    PC_RandomFile* rf = pcrt_get_random(name);\n"
          << "    if (rf) return (size_t)rf->current_record > rf->count;\n"
-         << "    FILE* fp = pc_get_file(name);\n"
+         << "    FILE* fp = pcrt_get_file(name);\n"
          << "    int c = fgetc(fp);\n"
          << "    if (c == EOF) return true;\n"
          << "    ungetc(c, fp);\n"
          << "    return false;\n"
          << "}\n"
-         << "static void pc_cleanup(void) {\n"
-         << "    while (pc_random_head) {\n"
-         << "        pc_close_random(pc_random_head->name);\n"
+         << "static void pcrt_cleanup(void) {\n"
+         << "    while (pcrt_random_head) {\n"
+         << "        pcrt_close_random(pcrt_random_head->name);\n"
          << "    }\n"
-         << "    while (pc_files_head) {\n"
-         << "        PC_File* next = pc_files_head->next;\n"
-         << "        fclose(pc_files_head->fp);\n"
-         << "        free(pc_files_head);\n"
-         << "        pc_files_head = next;\n"
+         << "    while (pcrt_files_head) {\n"
+         << "        PC_File* next = pcrt_files_head->next;\n"
+         << "        fclose(pcrt_files_head->fp);\n"
+         << "        free(pcrt_files_head);\n"
+         << "        pcrt_files_head = next;\n"
          << "    }\n"
-         << "    while (pc_gc_head) {\n"
-         << "        PC_Node* next = pc_gc_head->next;\n"
-         << "        free(pc_gc_head->ptr);\n"
-         << "        free(pc_gc_head);\n"
-         << "        pc_gc_head = next;\n"
+         << "    while (pcrt_gc_head) {\n"
+         << "        PC_Node* next = pcrt_gc_head->next;\n"
+         << "        free(pcrt_gc_head->ptr);\n"
+         << "        free(pcrt_gc_head);\n"
+         << "        pcrt_gc_head = next;\n"
          << "    }\n"
          << "}\n"
          << "// --- Line-based Unified Input Runtime ---\n"
-         << "static char pc_input_buf[4096];\n"
-         << "static char* pc_read_line(void) {\n"
-         << "    if (!fgets(pc_input_buf, sizeof(pc_input_buf), stdin)) {\n"
-         << "        pc_input_buf[0] = '\\0';\n"
+         << "static char pcrt_input_buf[4096];\n"
+         << "static char* pcrt_read_line(void) {\n"
+         << "    if (!fgets(pcrt_input_buf, sizeof(pcrt_input_buf), stdin)) {\n"
+         << "        pcrt_input_buf[0] = '\\0';\n"
          << "    } else {\n"
-         << "        size_t len = strlen(pc_input_buf);\n"
-         << "        while (len > 0 && (pc_input_buf[len - 1] == '\\n' || pc_input_buf[len - 1] == '\\r')) {\n"
-         << "            pc_input_buf[--len] = '\\0';\n"
+         << "        size_t len = strlen(pcrt_input_buf);\n"
+         << "        while (len > 0 && (pcrt_input_buf[len - 1] == '\\n' || pcrt_input_buf[len - 1] == '\\r')) {\n"
+         << "            pcrt_input_buf[--len] = '\\0';\n"
          << "        }\n"
          << "    }\n"
-         << "    return pc_input_buf;\n"
+         << "    return pcrt_input_buf;\n"
          << "}\n"
-         << "static long long pc_read_int(void) {\n"
-         << "    char* line = pc_read_line();\n"
+         << "static long long pcrt_read_int(void) {\n"
+         << "    char* line = pcrt_read_line();\n"
          << "    char* end;\n"
          << "    long long val = strtoll(line, &end, 10);\n"
          << "    return (end == line) ? 0LL : val;\n"
          << "}\n"
-         << "static double pc_read_real(void) {\n"
-         << "    char* line = pc_read_line();\n"
+         << "static double pcrt_read_real(void) {\n"
+         << "    char* line = pcrt_read_line();\n"
          << "    char* end;\n"
          << "    double val = strtod(line, &end);\n"
          << "    return (end == line) ? 0.0 : val;\n"
          << "}\n"
-         << "static bool pc_read_bool(void) {\n"
-         << "    char* line = pc_read_line();\n"
+         << "static bool pcrt_read_bool(void) {\n"
+         << "    char* line = pcrt_read_line();\n"
          << "    while (*line && isspace((unsigned char)*line)) line++;\n"
          << "    if (strcasecmp(line, \"TRUE\") == 0 || strcmp(line, \"1\") == 0) return true;\n"
          << "    return false;\n"
          << "}\n"
          << "// --- Overflow-checked Integer Arithmetic ---\n"
-         << "static inline long long pc_add(long long a, long long b) {\n"
+         << "static inline long long pcrt_add(long long a, long long b) {\n"
          << "    long long res;\n"
          << "    if (__builtin_add_overflow(a, b, &res)) {\n"
          << "        fprintf(stderr, \"Runtime Error: 64-bit integer addition overflow\\n\");\n"
-         << "        pc_cleanup(); exit(1);\n"
+         << "        pcrt_cleanup(); exit(1);\n"
          << "    }\n"
          << "    return res;\n"
          << "}\n"
-         << "static inline long long pc_sub(long long a, long long b) {\n"
+         << "static inline long long pcrt_sub(long long a, long long b) {\n"
          << "    long long res;\n"
          << "    if (__builtin_sub_overflow(a, b, &res)) {\n"
          << "        fprintf(stderr, \"Runtime Error: 64-bit integer subtraction overflow\\n\");\n"
-         << "        pc_cleanup(); exit(1);\n"
+         << "        pcrt_cleanup(); exit(1);\n"
          << "    }\n"
          << "    return res;\n"
          << "}\n"
-         << "static inline long long pc_mul(long long a, long long b) {\n"
+         << "static inline long long pcrt_mul(long long a, long long b) {\n"
          << "    long long res;\n"
          << "    if (__builtin_mul_overflow(a, b, &res)) {\n"
          << "        fprintf(stderr, \"Runtime Error: 64-bit integer multiplication overflow\\n\");\n"
-         << "        pc_cleanup(); exit(1);\n"
+         << "        pcrt_cleanup(); exit(1);\n"
          << "    }\n"
          << "    return res;\n"
          << "}\n"
          << "// --- Array Indexing, Bounds Checking & Mathematical Helpers ---\n"
-         << "static inline void pc_bounds_check(long long val, long long low, long long high, const char* name) {\n"
+         << "static inline void pcrt_bounds_check(long long val, long long low, long long high, const char* name) {\n"
          << "    if (val < low || val > high) {\n"
          << "        fprintf(stderr, \"Runtime Error: Array index out of bounds on '%s': index %lld not in [%lld:%lld]\\n\", name, val, low, high);\n"
-         << "        pc_cleanup(); exit(1);\n"
+         << "        pcrt_cleanup(); exit(1);\n"
          << "    }\n"
          << "}\n"
-         << "static inline long long pc_div(long long a, long long b) {\n"
-         << "    if (b == 0) { fprintf(stderr, \"Runtime Error: Division by zero\\n\"); pc_cleanup(); exit(1); }\n"
+         << "static inline long long pcrt_div(long long a, long long b) {\n"
+         << "    if (b == 0) { fprintf(stderr, \"Runtime Error: Division by zero\\n\"); pcrt_cleanup(); exit(1); }\n"
          << "    long long q = a / b, r = a % b;\n"
          << "    if ((r != 0) && ((r < 0) ^ (b < 0))) q--;\n"
          << "    return q;\n"
          << "}\n"
-         << "static inline long long pc_mod(long long a, long long b) {\n"
-         << "    if (b == 0) { fprintf(stderr, \"Runtime Error: Modulo by zero\\n\"); pc_cleanup(); exit(1); }\n"
+         << "static inline long long pcrt_mod(long long a, long long b) {\n"
+         << "    if (b == 0) { fprintf(stderr, \"Runtime Error: Modulo by zero\\n\"); pcrt_cleanup(); exit(1); }\n"
          << "    long long r = a % b;\n"
          << "    if ((r != 0) && ((r < 0) ^ (b < 0))) r += b;\n"
          << "    return r;\n"
          << "}\n"
-         << "static char* pc_concat(const char* s1, const char* s2) {\n"
+         << "static char* pcrt_concat(const char* s1, const char* s2) {\n"
          << "    size_t l1 = strlen(s1), l2 = strlen(s2);\n"
          << "    char* res = (char*)malloc(l1 + l2 + 1);\n"
          << "    memcpy(res, s1, l1); memcpy(res + l1, s2, l2); res[l1 + l2] = '\\0';\n"
-         << "    return (char*)pc_track(res);\n"
+         << "    return (char*)pcrt_track(res);\n"
          << "}\n"
-         << "static char* pc_substring(const char* s, long long start, long long len) {\n"
+         << "static char* pcrt_substring(const char* s, long long start, long long len) {\n"
          << "    long long slen = (long long)strlen(s);\n"
          << "    if (start < 1) start = 1;\n"
          << "    if (len < 0) len = 0;\n"
-         << "    if (start > slen) return (char*)pc_track(strdup(\"\"));\n"
+         << "    if (start > slen) return (char*)pcrt_track(strdup(\"\"));\n"
          << "    if (start - 1 + len > slen) len = slen - (start - 1);\n"
          << "    char* sub = (char*)malloc(len + 1);\n"
          << "    memcpy(sub, s + (start - 1), len);\n"
          << "    sub[len] = '\\0';\n"
-         << "    return (char*)pc_track(sub);\n"
+         << "    return (char*)pcrt_track(sub);\n"
          << "}\n"
-         << "static char* pc_ucase(const char* s) {\n"
+         << "static char* pcrt_ucase(const char* s) {\n"
          << "    size_t len = strlen(s);\n"
          << "    char* r = (char*)malloc(len + 1);\n"
          << "    for (size_t i = 0; i < len; ++i) r[i] = toupper((unsigned char)s[i]);\n"
          << "    r[len] = '\\0';\n"
-         << "    return (char*)pc_track(r);\n"
+         << "    return (char*)pcrt_track(r);\n"
          << "}\n"
-         << "static char* pc_lcase(const char* s) {\n"
+         << "static char* pcrt_lcase(const char* s) {\n"
          << "    size_t len = strlen(s);\n"
          << "    char* r = (char*)malloc(len + 1);\n"
          << "    for (size_t i = 0; i < len; ++i) r[i] = tolower((unsigned char)s[i]);\n"
          << "    r[len] = '\\0';\n"
-         << "    return (char*)pc_track(r);\n"
+         << "    return (char*)pcrt_track(r);\n"
          << "}\n"
-         << "static char* pc_num_to_str_int(long long n) {\n"
+         << "static char* pcrt_num_to_str_int(long long n) {\n"
          << "    char buf[64]; snprintf(buf, sizeof(buf), \"%lld\", n);\n"
-         << "    return (char*)pc_track(strdup(buf));\n"
+         << "    return (char*)pcrt_track(strdup(buf));\n"
          << "}\n"
-         << "static char* pc_num_to_str_real(double d) {\n"
+         << "static char* pcrt_num_to_str_real(double d) {\n"
          << "    char buf[64]; snprintf(buf, sizeof(buf), \"%.10g\", d);\n"
-         << "    return (char*)pc_track(strdup(buf));\n"
+         << "    return (char*)pcrt_track(strdup(buf));\n"
          << "}\n"
-         << "static double pc_str_to_num(const char* s) { return atof(s); }\n"
-         << "static char* pc_left(const char* s, long long len) {\n"
-         << "    if (len <= 0) return (char*)pc_track(strdup(\"\"));\n"
+         << "static double pcrt_str_to_num(const char* s) { return atof(s); }\n"
+         << "static char* pcrt_left(const char* s, long long len) {\n"
+         << "    if (len <= 0) return (char*)pcrt_track(strdup(\"\"));\n"
          << "    long long slen = (long long)strlen(s);\n"
          << "    if (len > slen) len = slen;\n"
          << "    char* sub = (char*)malloc(len + 1);\n"
          << "    memcpy(sub, s, len);\n"
          << "    sub[len] = '\\0';\n"
-         << "    return (char*)pc_track(sub);\n"
+         << "    return (char*)pcrt_track(sub);\n"
          << "}\n"
-         << "static char* pc_right(const char* s, long long len) {\n"
-         << "    if (len <= 0) return (char*)pc_track(strdup(\"\"));\n"
+         << "static char* pcrt_right(const char* s, long long len) {\n"
+         << "    if (len <= 0) return (char*)pcrt_track(strdup(\"\"));\n"
          << "    long long slen = (long long)strlen(s);\n"
          << "    if (len > slen) len = slen;\n"
          << "    char* sub = (char*)malloc(len + 1);\n"
          << "    memcpy(sub, s + (slen - len), len);\n"
          << "    sub[len] = '\\0';\n"
-         << "    return (char*)pc_track(sub);\n"
+         << "    return (char*)pcrt_track(sub);\n"
          << "}\n"
-         << "static char* pc_chr(long long code) {\n"
+         << "static char* pcrt_chr(long long code) {\n"
          << "    char* res = (char*)malloc(2);\n"
          << "    res[0] = (char)(code & 0xFF);\n"
          << "    res[1] = '\\0';\n"
-         << "    return (char*)pc_track(res);\n"
+         << "    return (char*)pcrt_track(res);\n"
          << "}\n"
-         << "static long long pc_asc(const char* s) {\n"
+         << "static long long pcrt_asc(const char* s) {\n"
          << "    if (!s || s[0] == '\\0') return 0;\n"
          << "    return (long long)(unsigned char)s[0];\n"
          << "}\n"
-         << "static long long pc_int(double v) {\n"
+         << "static long long pcrt_int(double v) {\n"
          << "    return (long long)floor(v);\n"
          << "}\n"
-         << "static double pc_round(double v, long long places) {\n"
+         << "static double pcrt_round(double v, long long places) {\n"
          << "    double factor = pow(10.0, (double)places);\n"
          << "    return round(v * factor) / factor;\n"
          << "}\n"
-         << "static inline double pc_rnd(void) {\n"
+         << "static inline double pcrt_rnd(void) {\n"
          << "    return (double)rand() / ((double)RAND_MAX + 1.0);\n"
          << "}\n\n";
 }
@@ -440,7 +440,17 @@ void CodeGen::emitRecordDefinitions() {
         const auto& rdef = kv.second;
         out_ << "typedef struct " << cTypeName(rdef.name) << " {\n";
         for (const auto& f : rdef.fields) {
-            out_ << "    " << cBaseType(f.type) << " " << cName(f.name) << ";\n";
+            if (f.type.isArray) {
+                long long n1 = (f.type.upper1 - f.type.lower1 + 1);
+                if (f.type.dims == 1) {
+                    out_ << "    " << cBaseType(f.type) << " " << cName(f.name) << "[" << n1 << "];\n";
+                } else {
+                    long long n2 = (f.type.upper2 - f.type.lower2 + 1);
+                    out_ << "    " << cBaseType(f.type) << " " << cName(f.name) << "[" << n1 << "][" << n2 << "];\n";
+                }
+            } else {
+                out_ << "    " << cBaseType(f.type) << " " << cName(f.name) << ";\n";
+            }
         }
         out_ << "} " << cTypeName(rdef.name) << ";\n\n";
     }
@@ -480,12 +490,32 @@ void CodeGen::emitClassDefinitions() {
             auto pcit = classTypes_.find(*it);
             if (pcit == classTypes_.end()) continue;
             for (const auto& prop : pcit->second.properties) {
-                out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << ";\n";
+                if (prop.type.isArray) {
+                    long long n1 = (prop.type.upper1 - prop.type.lower1 + 1);
+                    if (prop.type.dims == 1) {
+                        out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << "[" << n1 << "];\n";
+                    } else {
+                        long long n2 = (prop.type.upper2 - prop.type.lower2 + 1);
+                        out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << "[" << n1 << "][" << n2 << "];\n";
+                    }
+                } else {
+                    out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << ";\n";
+                }
             }
         }
         // Own fields
         for (const auto& prop : ci.properties) {
-            out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << ";\n";
+            if (prop.type.isArray) {
+                long long n1 = (prop.type.upper1 - prop.type.lower1 + 1);
+                if (prop.type.dims == 1) {
+                    out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << "[" << n1 << "];\n";
+                } else {
+                    long long n2 = (prop.type.upper2 - prop.type.lower2 + 1);
+                    out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << "[" << n1 << "][" << n2 << "];\n";
+                }
+            } else {
+                out_ << "    " << cBaseType(prop.type) << " " << cName(prop.name) << ";\n";
+            }
         }
         out_ << "};\n\n";
         emitted.insert(name);
@@ -534,14 +564,18 @@ void CodeGen::emitFunctionDefinitions(const Block& program) {
             indent_ = 1;
             for (const auto& param : p.params) {
                 if (param.type.isArray && !param.isByRef) {
-                    long long n1 = (param.type.upper1 - param.type.lower1 + 1);
-                    if (param.type.dims == 1) {
-                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                    if (param.type.lower1 == 0 && param.type.upper1 == 0) {
+                        line("const " + cBaseType(param.type) + "* " + cName(param.name) + " = " + cName(param.name) + "_in;");
                     } else {
-                        long long n2 = (param.type.upper2 - param.type.lower2 + 1);
-                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                        long long n1 = (param.type.upper1 - param.type.lower1 + 1);
+                        if (param.type.dims == 1) {
+                            line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                        } else {
+                            long long n2 = (param.type.upper2 - param.type.lower2 + 1);
+                            line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                        }
+                        line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
                     }
-                    line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
                 }
             }
             for (const auto& stmt : p.body) emitStmt(*stmt);
@@ -569,14 +603,18 @@ void CodeGen::emitFunctionDefinitions(const Block& program) {
             indent_ = 1;
             for (const auto& param : f.params) {
                 if (param.type.isArray && !param.isByRef) {
-                    long long n1 = (param.type.upper1 - param.type.lower1 + 1);
-                    if (param.type.dims == 1) {
-                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                    if (param.type.lower1 == 0 && param.type.upper1 == 0) {
+                        line("const " + cBaseType(param.type) + "* " + cName(param.name) + " = " + cName(param.name) + "_in;");
                     } else {
-                        long long n2 = (param.type.upper2 - param.type.lower2 + 1);
-                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                        long long n1 = (param.type.upper1 - param.type.lower1 + 1);
+                        if (param.type.dims == 1) {
+                            line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                        } else {
+                            long long n2 = (param.type.upper2 - param.type.lower2 + 1);
+                            line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                        }
+                        line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
                     }
-                    line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
                 }
             }
             for (const auto& stmt : f.body) emitStmt(*stmt);
@@ -671,15 +709,10 @@ std::string CodeGen::generate(const Block& program) {
     emitRuntimeHeaders();
     emitRecordDefinitions();
     emitClassDefinitions();
-    emitFunctionPrototypes();
-    emitFunctionDefinitions(program);
-    emitClassMethods(program);
 
-    // Global arrays are emitted at file scope
-    bool hasArrays = false;
+    // Global variables (scalars and arrays) are emitted at file scope so functions can access them
     for (const auto& v : vars_) {
         if (v.second.isArray) {
-            hasArrays = true;
             long long n1 = (v.second.upper1 - v.second.lower1 + 1);
             if (v.second.dims == 1) {
                 out_ << "static " << cBaseType(v.second) << " " << cName(v.first)
@@ -689,23 +722,21 @@ std::string CodeGen::generate(const Block& program) {
                 out_ << "static " << cBaseType(v.second) << " " << cName(v.first)
                      << "[" << n1 << "][" << n2 << "];\n";
             }
-        }
-    }
-    if (hasArrays) out_ << "\n";
-
-    out_ << "int main(void) {\n";
-    indent_ = 1;
-
-    // Scalar declarations inside main()
-    for (const auto& v : vars_) {
-        if (!v.second.isArray) {
-            line(cBaseType(v.second) + " " + cName(v.first) + " = " + zeroValue(v.second) + ";");
+        } else {
+            out_ << "static " << cBaseType(v.second) << " " << cName(v.first)
+                 << " = " << zeroValue(v.second) << ";\n";
         }
     }
     if (!vars_.empty()) out_ << "\n";
 
+    emitFunctionPrototypes();
+    emitFunctionDefinitions(program);
+    emitClassMethods(program);
+
+    out_ << "int main(void) {\n";
+    indent_ = 1;
     emitBlock(program);
-    line("pc_cleanup();");
+    line("pcrt_cleanup();");
     line("return 0;");
     out_ << "}\n";
     return out_.str();
@@ -731,16 +762,20 @@ std::string CodeGen::arrayOffset(const std::string& name, const std::vector<Expr
     std::string s;
     if (info.dims == 1) {
         std::string i1 = expr(*indices[0]);
-        s += "[(pc_bounds_check(" + i1 + ", " + std::to_string(info.lower1) + ", " +
-             std::to_string(info.upper1) + ", \"" + name + "\"), (" + i1 + " - " +
-             std::to_string(info.lower1) + "))]";
+        if (info.lower1 == 0 && info.upper1 == 0) {
+            s += "[(" + i1 + " - 1)]";
+        } else {
+            s += "[(pcrt_bounds_check(" + i1 + ", " + std::to_string(info.lower1) + ", " +
+                 std::to_string(info.upper1) + ", \"" + name + "\"), (" + i1 + " - " +
+                 std::to_string(info.lower1) + "))]";
+        }
     } else {
         std::string i1 = expr(*indices[0]);
         std::string i2 = expr(*indices[1]);
-        s += "[(pc_bounds_check(" + i1 + ", " + std::to_string(info.lower1) + ", " +
+        s += "[(pcrt_bounds_check(" + i1 + ", " + std::to_string(info.lower1) + ", " +
              std::to_string(info.upper1) + ", \"" + name + "\"), (" + i1 + " - " +
              std::to_string(info.lower1) + "))]";
-        s += "[(pc_bounds_check(" + i2 + ", " + std::to_string(info.lower2) + ", " +
+        s += "[(pcrt_bounds_check(" + i2 + ", " + std::to_string(info.lower2) + ", " +
              std::to_string(info.upper2) + ", \"" + name + "\"), (" + i2 + " - " +
              std::to_string(info.lower2) + "))]";
     }
@@ -769,8 +804,12 @@ std::string CodeGen::lvalueExpr(const Expr& e) {
             return cName(arrName) + arrayOffset(arrName, a.indices);
         }
         std::string s = a.target ? lvalueExpr(*a.target) : cName(a.name);
-        for (auto& idx : a.indices) {
-            s += "[" + expr(*idx) + "]";
+        for (size_t i = 0; i < a.indices.size(); ++i) {
+            long long lower = 1;
+            if (a.target && a.target->type.isArray) {
+                lower = (i == 0) ? a.target->type.lower1 : a.target->type.lower2;
+            }
+            s += "[(" + expr(*a.indices[i]) + " - " + std::to_string(lower) + ")]";
         }
         return s;
     }
@@ -853,7 +892,13 @@ void CodeGen::emitStmt(const Stmt& s) {
             auto& a = static_cast<const ArrayAssignStmt&>(s);
             if (a.target) {
                 std::string s = lvalueExpr(*a.target);
-                for (auto& idx : a.indices) s += "[" + expr(*idx) + "]";
+                for (size_t i = 0; i < a.indices.size(); ++i) {
+                    long long lower = 1;
+                    if (a.target->type.isArray) {
+                        lower = (i == 0) ? a.target->type.lower1 : a.target->type.lower2;
+                    }
+                    s += "[(" + expr(*a.indices[i]) + " - " + std::to_string(lower) + ")]";
+                }
                 line(s + " = " + expr(*a.value) + ";");
             } else {
                 line(cName(a.name) + arrayOffset(a.name, a.indices) + " = " + expr(*a.value) + ";");
@@ -961,7 +1006,7 @@ void CodeGen::emitStmt(const Stmt& s) {
                     long long elemCount = (r.value->type.upper1 - r.value->type.lower1 + 1);
                     if (r.value->type.dims == 2) elemCount *= (r.value->type.upper2 - r.value->type.lower2 + 1);
                     std::string elemT = cBaseType(r.value->type);
-                    line("{\n        " + elemT + "* pc_ret_arr = (" + elemT + "*)pc_track(malloc(" +
+                    line("{\n        " + elemT + "* pc_ret_arr = (" + elemT + "*)pcrt_track(malloc(" +
                          std::to_string(elemCount) + " * sizeof(" + elemT + ")));\n        " +
                          "memcpy(pc_ret_arr, " + expr(*r.value) + ", " + std::to_string(elemCount) + " * sizeof(" + elemT + "));\n        " +
                          "return pc_ret_arr;\n    }");
@@ -1020,31 +1065,31 @@ void CodeGen::emitStmt(const Stmt& s) {
 
         case Stmt::Kind::OpenFile: {
             auto& o = static_cast<const OpenFileStmt&>(s);
-            line("pc_open_file(" + expr(*o.filename) + ", \"" + o.mode + "\");");
+            line("pcrt_open_file(" + expr(*o.filename) + ", \"" + o.mode + "\");");
             break;
         }
 
         case Stmt::Kind::CloseFile: {
             auto& cf = static_cast<const CloseFileStmt&>(s);
-            line("pc_close_file(" + expr(*cf.filename) + ");");
+            line("pcrt_close_file(" + expr(*cf.filename) + ");");
             break;
         }
 
         case Stmt::Kind::ReadFile: {
             auto& rf = static_cast<const ReadFileStmt&>(s);
-            line(lvalueExpr(*rf.target) + " = pc_read_file_line(" + expr(*rf.filename) + ");");
+            line(lvalueExpr(*rf.target) + " = pcrt_read_file_line(" + expr(*rf.filename) + ");");
             break;
         }
 
         case Stmt::Kind::WriteFile: {
             auto& wf = static_cast<const WriteFileStmt&>(s);
-            line("pc_write_file_line(" + expr(*wf.filename) + ", " + expr(*wf.value) + ");");
+            line("pcrt_write_file_line(" + expr(*wf.filename) + ", " + expr(*wf.value) + ");");
             break;
         }
 
         case Stmt::Kind::Seek: {
             auto& sk = static_cast<const SeekStmt&>(s);
-            line("pc_seek_random(" + expr(*sk.filename) + ", " + expr(*sk.address) + ");");
+            line("pcrt_seek_random(" + expr(*sk.filename) + ", " + expr(*sk.address) + ");");
             break;
         }
 
@@ -1075,7 +1120,7 @@ void CodeGen::emitStmt(const Stmt& s) {
                     }
                 }
                 line("        snprintf(pc_rec_buf, sizeof(pc_rec_buf), \"" + fmt + "\"" + args + ");");
-                line("        pc_put_record_line(" + expr(*pr.filename) + ", pc_rec_buf);\n    }");
+                line("        pcrt_put_record_line(" + expr(*pr.filename) + ", pc_rec_buf);\n    }");
             } else {
                 line("{\n        char pc_rec_buf[4096];");
                 if (pr.value->type.base == BaseType::Integer) {
@@ -1087,7 +1132,7 @@ void CodeGen::emitStmt(const Stmt& s) {
                 } else {
                     line("        snprintf(pc_rec_buf, sizeof(pc_rec_buf), \"%s\", " + expr(*pr.value) + ");");
                 }
-                line("        pc_put_record_line(" + expr(*pr.filename) + ", pc_rec_buf);\n    }");
+                line("        pcrt_put_record_line(" + expr(*pr.filename) + ", pc_rec_buf);\n    }");
             }
             break;
         }
@@ -1097,12 +1142,12 @@ void CodeGen::emitStmt(const Stmt& s) {
             std::string tgtStr = lvalueExpr(*gr.target);
             if (gr.target->type.base == BaseType::Record) {
                 const auto& rdef = recordTypes_.at(gr.target->type.recordName);
-                line("{\n        char* pc_line_raw = pc_get_record_line(" + expr(*gr.filename) + ");");
+                line("{\n        char* pc_line_raw = pcrt_get_record_line(" + expr(*gr.filename) + ");");
                 line("        char* pc_line_dup = strdup(pc_line_raw);");
                 line("        char* pc_cursor = pc_line_dup;");
                 for (const auto& fld : rdef.fields) {
                     std::string fldLhs = tgtStr + "." + cName(fld.name);
-                    line("        char* pc_tok_" + fld.name + " = pc_next_record_field(&pc_cursor);");
+                    line("        char* pc_tok_" + fld.name + " = pcrt_next_record_field(&pc_cursor);");
                     if (fld.type.base == BaseType::Integer) {
                         line("        " + fldLhs + " = atoll(pc_tok_" + fld.name + ");");
                     } else if (fld.type.base == BaseType::Real) {
@@ -1110,12 +1155,12 @@ void CodeGen::emitStmt(const Stmt& s) {
                     } else if (fld.type.base == BaseType::Boolean) {
                         line("        " + fldLhs + " = (strcmp(pc_tok_" + fld.name + ", \"TRUE\") == 0 || strcmp(pc_tok_" + fld.name + ", \"1\") == 0);");
                     } else {
-                        line("        " + fldLhs + " = (char*)pc_track(strdup(pc_tok_" + fld.name + "));");
+                        line("        " + fldLhs + " = (char*)pcrt_track(strdup(pc_tok_" + fld.name + "));");
                     }
                 }
                 line("        free(pc_line_dup);\n    }");
             } else {
-                line("{\n        char* pc_line_raw = pc_get_record_line(" + expr(*gr.filename) + ");");
+                line("{\n        char* pc_line_raw = pcrt_get_record_line(" + expr(*gr.filename) + ");");
                 if (gr.target->type.base == BaseType::Integer) {
                     line("        " + tgtStr + " = atoll(pc_line_raw);");
                 } else if (gr.target->type.base == BaseType::Real) {
@@ -1123,7 +1168,7 @@ void CodeGen::emitStmt(const Stmt& s) {
                 } else if (gr.target->type.base == BaseType::Boolean) {
                     line("        " + tgtStr + " = (strcmp(pc_line_raw, \"TRUE\") == 0 || strcmp(pc_line_raw, \"1\") == 0);");
                 } else {
-                    line("        " + tgtStr + " = (char*)pc_track(strdup(pc_line_raw));");
+                    line("        " + tgtStr + " = (char*)pcrt_track(strdup(pc_line_raw));");
                 }
                 line("    }");
             }
@@ -1219,17 +1264,17 @@ void CodeGen::emitInput(const InputStmt& in) {
 
     switch (b) {
         case BaseType::Integer:
-            line(target + " = pc_read_int();");
+            line(target + " = pcrt_read_int();");
             break;
         case BaseType::Real:
-            line(target + " = pc_read_real();");
+            line(target + " = pcrt_read_real();");
             break;
         case BaseType::Boolean:
-            line(target + " = pc_read_bool();");
+            line(target + " = pcrt_read_bool();");
             break;
         case BaseType::String:
         case BaseType::Char:
-            line(target + " = (char*)pc_track(strdup(pc_read_line()));");
+            line(target + " = (char*)pcrt_track(strdup(pcrt_read_line()));");
             break;
         default:
             break;
@@ -1252,7 +1297,7 @@ void CodeGen::emitFor(const ForStmt& f) {
         line("long long " + stepVar + " = " + expr(*f.step) + ";");
         line("if (" + stepVar + " == 0) { "
              "fprintf(stderr, \"Runtime Error: FOR step cannot be zero\\n\"); "
-             "pc_cleanup(); exit(1); }");
+             "pcrt_cleanup(); exit(1); }");
         line("for (" + var + " = " + expr(*f.start) + "; " + stepVar + " > 0 ? " + var +
              " <= " + endVar + " : " + var + " >= " + endVar + "; " + var + " += " +
              stepVar + ") {");
@@ -1316,7 +1361,13 @@ std::string CodeGen::expr(const Expr& e) {
                 return cName(arrName) + arrayOffset(arrName, a.indices);
             }
             std::string s = a.target ? lvalueExpr(*a.target) : cName(a.name);
-            for (auto& idx : a.indices) s += "[" + expr(*idx) + "]";
+            for (size_t i = 0; i < a.indices.size(); ++i) {
+                long long lower = 1;
+                if (a.target && a.target->type.isArray) {
+                    lower = (i == 0) ? a.target->type.lower1 : a.target->type.lower2;
+                }
+                s += "[(" + expr(*a.indices[i]) + " - " + std::to_string(lower) + ")]";
+            }
             return s;
         }
         case Expr::Kind::MemberAccess: {
@@ -1429,37 +1480,37 @@ std::string CodeGen::call(const CallExpr& c) {
             return "((long long)strlen(" + expr(*c.args[0]) + "))";
         case Tok::Substring:
         case Tok::Mid:
-            return "pc_substring(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ", " + expr(*c.args[2]) + ")";
+            return "pcrt_substring(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ", " + expr(*c.args[2]) + ")";
         case Tok::Left:
-            return "pc_left(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+            return "pcrt_left(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::Right:
-            return "pc_right(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+            return "pcrt_right(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::UCase:
-            return "pc_ucase(" + expr(*c.args[0]) + ")";
+            return "pcrt_ucase(" + expr(*c.args[0]) + ")";
         case Tok::LCase:
-            return "pc_lcase(" + expr(*c.args[0]) + ")";
+            return "pcrt_lcase(" + expr(*c.args[0]) + ")";
         case Tok::NumToStr:
             if (c.args[0]->type.base == BaseType::Integer)
-                return "pc_num_to_str_int(" + expr(*c.args[0]) + ")";
-            return "pc_num_to_str_real(" + expr(*c.args[0]) + ")";
+                return "pcrt_num_to_str_int(" + expr(*c.args[0]) + ")";
+            return "pcrt_num_to_str_real(" + expr(*c.args[0]) + ")";
         case Tok::StrToNum:
-            return "pc_str_to_num(" + expr(*c.args[0]) + ")";
+            return "pcrt_str_to_num(" + expr(*c.args[0]) + ")";
         case Tok::Chr:
-            return "pc_chr(" + expr(*c.args[0]) + ")";
+            return "pcrt_chr(" + expr(*c.args[0]) + ")";
         case Tok::Asc:
-            return "pc_asc(" + expr(*c.args[0]) + ")";
+            return "pcrt_asc(" + expr(*c.args[0]) + ")";
         case Tok::IntFunc:
-            return "pc_int(" + expr(*c.args[0]) + ")";
+            return "pcrt_int(" + expr(*c.args[0]) + ")";
         case Tok::Round:
-            return "pc_round(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+            return "pcrt_round(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::Rnd:
-            return "pc_rnd()";
+            return "pcrt_rnd()";
         case Tok::Mod:
-            return "pc_mod(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+            return "pcrt_mod(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::Div:
-            return "pc_div(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
+            return "pcrt_div(" + expr(*c.args[0]) + ", " + expr(*c.args[1]) + ")";
         case Tok::EofFunc:
-            return "pc_eof(" + expr(*c.args[0]) + ")";
+            return "pcrt_eof(" + expr(*c.args[0]) + ")";
         default:
             return "";
     }
@@ -1467,12 +1518,12 @@ std::string CodeGen::call(const CallExpr& c) {
 
 std::string CodeGen::binary(const BinaryExpr& b) {
     std::string l = expr(*b.lhs), r = expr(*b.rhs);
-    if (b.op == Tok::Ampersand) return "pc_concat(" + l + ", " + r + ")";
+    if (b.op == Tok::Ampersand) return "pcrt_concat(" + l + ", " + r + ")";
 
     if (b.lhs->type.base == BaseType::Integer && b.rhs->type.base == BaseType::Integer) {
-        if (b.op == Tok::Plus)  return "pc_add(" + l + ", " + r + ")";
-        if (b.op == Tok::Minus) return "pc_sub(" + l + ", " + r + ")";
-        if (b.op == Tok::Star)  return "pc_mul(" + l + ", " + r + ")";
+        if (b.op == Tok::Plus)  return "pcrt_add(" + l + ", " + r + ")";
+        if (b.op == Tok::Minus) return "pcrt_sub(" + l + ", " + r + ")";
+        if (b.op == Tok::Star)  return "pcrt_mul(" + l + ", " + r + ")";
     }
 
     switch (b.op) {
@@ -1480,8 +1531,8 @@ std::string CodeGen::binary(const BinaryExpr& b) {
         case Tok::Minus: return "(" + l + " - " + r + ")";
         case Tok::Star:  return "(" + l + " * " + r + ")";
         case Tok::Slash: return "((double)" + l + " / (double)" + r + ")";
-        case Tok::Div:   return "pc_div(" + l + ", " + r + ")";
-        case Tok::Mod:   return "pc_mod(" + l + ", " + r + ")";
+        case Tok::Div:   return "pcrt_div(" + l + ", " + r + ")";
+        case Tok::Mod:   return "pcrt_mod(" + l + ", " + r + ")";
         case Tok::And:   return "(" + l + " && " + r + ")";
         case Tok::Or:    return "(" + l + " || " + r + ")";
         default: break;

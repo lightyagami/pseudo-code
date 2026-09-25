@@ -1,0 +1,343 @@
+TYPE Student
+    DECLARE ID : INTEGER
+    DECLARE Name : STRING
+    DECLARE Marks : ARRAY[1:5] OF INTEGER
+    DECLARE Average : REAL
+    DECLARE Grade : CHAR
+    DECLARE Passed : BOOLEAN
+ENDTYPE
+
+DECLARE Students : ARRAY[1:10] OF Student
+DECLARE Count : INTEGER
+DECLARE i : INTEGER
+DECLARE j : INTEGER
+DECLARE k : INTEGER
+DECLARE Choice : INTEGER
+DECLARE SearchID : INTEGER
+DECLARE Found : BOOLEAN
+DECLARE Total : INTEGER
+DECLARE Highest : INTEGER
+DECLARE Lowest : INTEGER
+DECLARE Temp : INTEGER
+DECLARE TempName : STRING
+DECLARE TempAverage : REAL
+DECLARE TempGrade : CHAR
+DECLARE TempPassed : BOOLEAN
+DECLARE AverageAll : REAL
+
+FUNCTION CalculateAverage(Marks : ARRAY OF INTEGER) RETURNS REAL
+    DECLARE Sum : INTEGER
+    DECLARE i : INTEGER
+
+    Sum <- 0
+
+    FOR i <- 1 TO 5
+        Sum <- Sum + Marks[i]
+    NEXT i
+
+    RETURN Sum / 5
+ENDFUNCTION
+
+
+FUNCTION CalculateGrade(Average : REAL) RETURNS CHAR
+    IF Average >= 80 THEN
+        RETURN "A"
+    ELSE
+        IF Average >= 70 THEN
+            RETURN "B"
+        ELSE
+            IF Average >= 60 THEN
+                RETURN "C"
+            ELSE
+                IF Average >= 50 THEN
+                    RETURN "D"
+                ELSE
+                    RETURN "F"
+                ENDIF
+            ENDIF
+        ENDIF
+    ENDIF
+ENDFUNCTION
+
+
+FUNCTION HasPassed(Marks : ARRAY OF INTEGER) RETURNS BOOLEAN
+    DECLARE i : INTEGER
+
+    FOR i <- 1 TO 5
+        IF Marks[i] < 40 THEN
+            RETURN FALSE
+        ENDIF
+    NEXT i
+
+    RETURN TRUE
+ENDFUNCTION
+
+
+PROCEDURE CalculateStudentData(BYREF StudentData : Student)
+    StudentData.Average <- CalculateAverage(StudentData.Marks)
+    StudentData.Grade <- CalculateGrade(StudentData.Average)
+    StudentData.Passed <- HasPassed(StudentData.Marks)
+ENDPROCEDURE
+
+
+PROCEDURE SwapStudents(BYREF A : Student, BYREF B : Student)
+    DECLARE TempStudent : Student
+
+    TempStudent <- A
+    A <- B
+    B <- TempStudent
+ENDPROCEDURE
+
+
+PROCEDURE SortStudents(BYREF Data : ARRAY OF Student, Size : INTEGER)
+    DECLARE i : INTEGER
+    DECLARE j : INTEGER
+    DECLARE MaxIndex : INTEGER
+
+    FOR i <- 1 TO Size - 1
+        MaxIndex <- i
+
+        FOR j <- i + 1 TO Size
+            IF Data[j].Average > Data[MaxIndex].Average THEN
+                MaxIndex <- j
+            ELSE
+                IF Data[j].Average = Data[MaxIndex].Average THEN
+                    IF Data[j].ID < Data[MaxIndex].ID THEN
+                        MaxIndex <- j
+                    ENDIF
+                ENDIF
+            ENDIF
+        NEXT j
+
+        IF MaxIndex <> i THEN
+            SwapStudents(Data[i], Data[MaxIndex])
+        ENDIF
+    NEXT i
+ENDPROCEDURE
+
+
+FUNCTION BinarySearch(Data : ARRAY OF Student, Size : INTEGER, TargetID : INTEGER) RETURNS INTEGER
+    DECLARE Low : INTEGER
+    DECLARE High : INTEGER
+    DECLARE Mid : INTEGER
+
+    Low <- 1
+    High <- Size
+
+    WHILE Low <= High
+        Mid <- (Low + High) DIV 2
+
+        IF Data[Mid].ID = TargetID THEN
+            RETURN Mid
+        ELSE
+            IF Data[Mid].ID < TargetID THEN
+                Low <- Mid + 1
+            ELSE
+                High <- Mid - 1
+            ENDIF
+        ENDIF
+    ENDWHILE
+
+    RETURN -1
+ENDFUNCTION
+
+
+FUNCTION RecursiveFactorial(N : INTEGER) RETURNS INTEGER
+    IF N <= 1 THEN
+        RETURN 1
+    ELSE
+        RETURN N * RecursiveFactorial(N - 1)
+    ENDIF
+ENDFUNCTION
+
+
+FUNCTION IsPrime(N : INTEGER) RETURNS BOOLEAN
+    DECLARE i : INTEGER
+
+    IF N < 2 THEN
+        RETURN FALSE
+    ENDIF
+
+    FOR i <- 2 TO N DIV 2
+        IF N MOD i = 0 THEN
+            RETURN FALSE
+        ENDIF
+    NEXT i
+
+    RETURN TRUE
+ENDFUNCTION
+
+
+PROCEDURE DisplayStudent(StudentData : Student)
+    OUTPUT "-----------------------------"
+    OUTPUT "ID: ", StudentData.ID
+    OUTPUT "Name: ", StudentData.Name
+    OUTPUT "Marks:"
+
+    FOR k <- 1 TO 5
+        OUTPUT "Subject ", k, ": ", StudentData.Marks[k]
+    NEXT k
+
+    OUTPUT "Average: ", StudentData.Average
+    OUTPUT "Grade: ", StudentData.Grade
+
+    IF StudentData.Passed = TRUE THEN
+        OUTPUT "Status: PASSED"
+    ELSE
+        OUTPUT "Status: FAILED"
+    ENDIF
+ENDPROCEDURE
+
+
+Count <- 5
+
+Students[1].ID <- 104
+Students[1].Name <- "Alice"
+Students[1].Marks[1] <- 78
+Students[1].Marks[2] <- 85
+Students[1].Marks[3] <- 91
+Students[1].Marks[4] <- 67
+Students[1].Marks[5] <- 88
+
+Students[2].ID <- 101
+Students[2].Name <- "Bob"
+Students[2].Marks[1] <- 55
+Students[2].Marks[2] <- 61
+Students[2].Marks[3] <- 49
+Students[2].Marks[4] <- 73
+Students[2].Marks[5] <- 68
+
+Students[3].ID <- 109
+Students[3].Name <- "Charlie"
+Students[3].Marks[1] <- 92
+Students[3].Marks[2] <- 95
+Students[3].Marks[3] <- 89
+Students[3].Marks[4] <- 94
+Students[3].Marks[5] <- 90
+
+Students[4].ID <- 103
+Students[4].Name <- "Diana"
+Students[4].Marks[1] <- 35
+Students[4].Marks[2] <- 76
+Students[4].Marks[3] <- 82
+Students[4].Marks[4] <- 64
+Students[4].Marks[5] <- 71
+
+Students[5].ID <- 107
+Students[5].Name <- "Ethan"
+Students[5].Marks[1] <- 45
+Students[5].Marks[2] <- 51
+Students[5].Marks[3] <- 39
+Students[5].Marks[4] <- 48
+Students[5].Marks[5] <- 57
+
+
+OUTPUT "CALCULATING STUDENT DATA..."
+OUTPUT ""
+
+FOR i <- 1 TO Count
+    CalculateStudentData(Students[i])
+NEXT i
+
+
+OUTPUT "ORIGINAL STUDENTS"
+
+FOR i <- 1 TO Count
+    DisplayStudent(Students[i])
+NEXT i
+
+
+Highest <- Students[1].Marks[1]
+Lowest <- Students[1].Marks[1]
+Total <- 0
+
+FOR i <- 1 TO Count
+    FOR j <- 1 TO 5
+
+        Total <- Total + Students[i].Marks[j]
+
+        IF Students[i].Marks[j] > Highest THEN
+            Highest <- Students[i].Marks[j]
+        ENDIF
+
+        IF Students[i].Marks[j] < Lowest THEN
+            Lowest <- Students[i].Marks[j]
+        ENDIF
+
+    NEXT j
+NEXT i
+
+AverageAll <- Total / (Count * 5)
+
+OUTPUT ""
+OUTPUT "CLASS STATISTICS"
+OUTPUT "Total Marks: ", Total
+OUTPUT "Average Mark: ", AverageAll
+OUTPUT "Highest Mark: ", Highest
+OUTPUT "Lowest Mark: ", Lowest
+
+
+OUTPUT ""
+OUTPUT "SORTING STUDENTS..."
+
+SortStudents(Students, Count)
+
+
+OUTPUT ""
+OUTPUT "STUDENTS SORTED BY AVERAGE"
+
+FOR i <- 1 TO Count
+    OUTPUT i, ". ", Students[i].Name, " - ", Students[i].Average, " - ", Students[i].Grade
+NEXT i
+
+
+OUTPUT ""
+OUTPUT "SEARCH STUDENT BY ID"
+
+SearchID <- 103
+
+Found <- FALSE
+
+FOR i <- 1 TO Count
+    IF Students[i].ID = SearchID THEN
+        Found <- TRUE
+        OUTPUT "Student found at position ", i
+        DisplayStudent(Students[i])
+    ENDIF
+NEXT i
+
+IF Found = FALSE THEN
+    OUTPUT "Student not found"
+ENDIF
+
+
+OUTPUT ""
+OUTPUT "PRIME NUMBER TEST"
+
+FOR i <- 1 TO 20
+    IF IsPrime(i) THEN
+        OUTPUT i, " is prime"
+    ENDIF
+NEXT i
+
+
+OUTPUT ""
+OUTPUT "RECURSIVE FACTORIAL TEST"
+
+FOR i <- 1 TO 10
+    OUTPUT i, "! = ", RecursiveFactorial(i)
+NEXT i
+
+
+OUTPUT ""
+OUTPUT "CASE TEST"
+
+Choice <- 3
+
+CASE OF Choice
+    1 : OUTPUT "Option One"
+    2 : OUTPUT "Option Two"
+    3 : OUTPUT "Option Three"
+    4 : OUTPUT "Option Four"
+    OTHERWISE : OUTPUT "Invalid Option"
+ENDCASE

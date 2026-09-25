@@ -170,6 +170,10 @@ enum class OpCode : uint8_t {
     OpSetArray1D,
     OpGetArray2D,
     OpSetArray2D,
+    OpIndex1D,
+    OpSetIndex1D,
+    OpIndex2D,
+    OpSetIndex2D,
 
     // Record operations
     OpGetField,

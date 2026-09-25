@@ -1,0 +1,118 @@
+CALCULATING STUDENT DATA...
+
+ORIGINAL STUDENTS
+-----------------------------
+ID: 104
+Name: Alice
+Marks:
+Subject 1: 78
+Subject 2: 85
+Subject 3: 91
+Subject 4: 67
+Subject 5: 88
+Average: 81.8
+Grade: A
+Status: PASSED
+-----------------------------
+ID: 101
+Name: Bob
+Marks:
+Subject 1: 55
+Subject 2: 61
+Subject 3: 49
+Subject 4: 73
+Subject 5: 68
+Average: 61.2
+Grade: C
+Status: PASSED
+-----------------------------
+ID: 109
+Name: Charlie
+Marks:
+Subject 1: 92
+Subject 2: 95
+Subject 3: 89
+Subject 4: 94
+Subject 5: 90
+Average: 92
+Grade: A
+Status: PASSED
+-----------------------------
+ID: 103
+Name: Diana
+Marks:
+Subject 1: 35
+Subject 2: 76
+Subject 3: 82
+Subject 4: 64
+Subject 5: 71
+Average: 65.6
+Grade: C
+Status: FAILED
+-----------------------------
+ID: 107
+Name: Ethan
+Marks:
+Subject 1: 45
+Subject 2: 51
+Subject 3: 39
+Subject 4: 48
+Subject 5: 57
+Average: 48
+Grade: F
+Status: FAILED
+
+CLASS STATISTICS
+Total Marks: 1743
+Average Mark: 69.72
+Highest Mark: 95
+Lowest Mark: 35
+
+SORTING STUDENTS...
+
+STUDENTS SORTED BY AVERAGE
+1. Charlie - 92 - A
+2. Alice - 81.8 - A
+3. Diana - 65.6 - C
+4. Bob - 61.2 - C
+5. Ethan - 48 - F
+
+SEARCH STUDENT BY ID
+Student found at position 3
+-----------------------------
+ID: 103
+Name: Diana
+Marks:
+Subject 1: 35
+Subject 2: 76
+Subject 3: 82
+Subject 4: 64
+Subject 5: 71
+Average: 65.6
+Grade: C
+Status: FAILED
+
+PRIME NUMBER TEST
+2 is prime
+3 is prime
+5 is prime
+7 is prime
+11 is prime
+13 is prime
+17 is prime
+19 is prime
+
+RECURSIVE FACTORIAL TEST
+1! = 1
+2! = 2
+3! = 6
+4! = 24
+5! = 120
+6! = 720
+7! = 5040
+8! = 40320
+9! = 362880
+10! = 3628800
+
+CASE TEST
+Option Three

@@ -156,26 +156,32 @@ TypeInfo Parser::parseType() {
     if (match(Tok::Char))    return TypeInfo{BaseType::Char, "", false, 0, 0, 0, 0, 0};
 
     if (match(Tok::Array)) {
-        expect(Tok::LBracket, "'['");
-        const Token& l1 = expect(Tok::IntLit, "array lower bound");
-        expect(Tok::Colon, "':'");
-        const Token& u1 = expect(Tok::IntLit, "array upper bound");
-
         TypeInfo info;
         info.isArray = true;
-        info.dims = 1;
-        info.lower1 = std::stoll(l1.lexeme);
-        info.upper1 = std::stoll(u1.lexeme);
-
-        if (match(Tok::Comma)) {
-            info.dims = 2;
-            const Token& l2 = expect(Tok::IntLit, "second-dimension lower bound");
+        if (match(Tok::LBracket)) {
+            const Token& l1 = expect(Tok::IntLit, "array lower bound");
             expect(Tok::Colon, "':'");
-            const Token& u2 = expect(Tok::IntLit, "second-dimension upper bound");
-            info.lower2 = std::stoll(l2.lexeme);
-            info.upper2 = std::stoll(u2.lexeme);
+            const Token& u1 = expect(Tok::IntLit, "array upper bound");
+
+            info.dims = 1;
+            info.lower1 = std::stoll(l1.lexeme);
+            info.upper1 = std::stoll(u1.lexeme);
+
+            if (match(Tok::Comma)) {
+                info.dims = 2;
+                const Token& l2 = expect(Tok::IntLit, "second-dimension lower bound");
+                expect(Tok::Colon, "':'");
+                const Token& u2 = expect(Tok::IntLit, "second-dimension upper bound");
+                info.lower2 = std::stoll(l2.lexeme);
+                info.upper2 = std::stoll(u2.lexeme);
+            }
+            expect(Tok::RBracket, "']'");
+        } else {
+            // Unconstrained array: ARRAY OF <type> (e.g. function/procedure parameter)
+            info.dims = 1;
+            info.lower1 = 0;
+            info.upper1 = 0;
         }
-        expect(Tok::RBracket, "']'");
         expect(Tok::Of, "'OF'");
 
         const Token& elemTok = peek();
@@ -673,6 +679,19 @@ StmtPtr Parser::parseCase() {
 }
 
 StmtPtr Parser::parseAssignOrMemberOrArray(const Token& name) {
+    if (check(Tok::LParen)) {
+        advance(); // consume '('
+        auto s = std::make_unique<CallStmt>(name.line, name.col);
+        s->name = name.lexeme;
+        if (!check(Tok::RParen)) {
+            s->args.push_back(parseExpr());
+            while (match(Tok::Comma)) s->args.push_back(parseExpr());
+        }
+        expect(Tok::RParen, "')'");
+        expect(Tok::Newline, "end of line");
+        return s;
+    }
+
     ExprPtr target = std::make_unique<VarExpr>(name.line, name.col);
     static_cast<VarExpr&>(*target).name = name.lexeme;
 

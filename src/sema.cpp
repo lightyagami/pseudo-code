@@ -127,7 +127,15 @@ Sema::Symbol* Sema::lookup(const std::string& name) {
 }
 
 bool Sema::assignable(const TypeInfo& to, const TypeInfo& from) const {
-    if (to.isArray || from.isArray) return to == from;
+    if (to.isArray || from.isArray) {
+        if (!to.isArray || !from.isArray) return false;
+        if (to.base != from.base) return false;
+        if ((to.base == BaseType::Record || to.base == BaseType::Object) && to.recordName != from.recordName) return false;
+        if (to.dims != from.dims && to.dims != 0 && from.dims != 0) return false;
+        if ((to.lower1 == 0 && to.upper1 == 0) || (from.lower1 == 0 && from.upper1 == 0)) return true;
+        if (to.dims == 1) return to.lower1 == from.lower1 && to.upper1 == from.upper1;
+        return to.lower1 == from.lower1 && to.upper1 == from.upper1 && to.lower2 == from.lower2 && to.upper2 == from.upper2;
+    }
     if (to.base == from.base) {
         if (to.base == BaseType::Record) return to.recordName == from.recordName;
         if (to.base == BaseType::Object) {

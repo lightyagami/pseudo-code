@@ -54,6 +54,10 @@ const char* opCodeName(OpCode op) {
         case OpCode::OpSetArray1D:         return "OP_SET_ARRAY_1D";
         case OpCode::OpGetArray2D:         return "OP_GET_ARRAY_2D";
         case OpCode::OpSetArray2D:         return "OP_SET_ARRAY_2D";
+        case OpCode::OpIndex1D:            return "OP_INDEX_1D";
+        case OpCode::OpSetIndex1D:         return "OP_SET_INDEX_1D";
+        case OpCode::OpIndex2D:            return "OP_INDEX_2D";
+        case OpCode::OpSetIndex2D:         return "OP_SET_INDEX_2D";
         case OpCode::OpGetField:           return "OP_GET_FIELD";
         case OpCode::OpSetField:           return "OP_SET_FIELD";
         case OpCode::OpCall:               return "OP_CALL";
@@ -633,20 +637,33 @@ void BytecodeCompiler::compileStmt(const Stmt& s) {
             if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
                 arrName = static_cast<const VarExpr&>(*a.target).name;
             }
-            compileExpr(*a.value);
-            TypeInfo varType = getVarType(arrName);
-            if (varType.base == BaseType::Real && a.value->type.base == BaseType::Integer) {
-                emit(OpCode::OpWidenReal, 0, 0, 0, 0, a.line);
-            }
-            for (auto& idx : a.indices) {
-                compileExpr(*idx);
-            }
-            int enc = getVarSlot(arrName);
-            int nameConst = addConstant(Value::makeString(arrName));
-            if (a.indices.size() == 1) {
-                emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, a.line);
-            } else {
-                emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, a.line);
+            if (!arrName.empty()) {
+                compileExpr(*a.value);
+                TypeInfo varType = getVarType(arrName);
+                if (varType.base == BaseType::Real && a.value->type.base == BaseType::Integer) {
+                    emit(OpCode::OpWidenReal, 0, 0, 0, 0, a.line);
+                }
+                for (auto& idx : a.indices) {
+                    compileExpr(*idx);
+                }
+                int enc = getVarSlot(arrName);
+                int nameConst = addConstant(Value::makeString(arrName));
+                if (a.indices.size() == 1) {
+                    emit(OpCode::OpSetArray1D, enc, nameConst, 0, 0, a.line);
+                } else {
+                    emit(OpCode::OpSetArray2D, enc, nameConst, 0, 0, a.line);
+                }
+            } else if (a.target) {
+                compileExpr(*a.target);
+                compileExpr(*a.value);
+                for (auto& idx : a.indices) {
+                    compileExpr(*idx);
+                }
+                if (a.indices.size() == 1) {
+                    emit(OpCode::OpSetIndex1D, 0, 0, 0, 0, a.line);
+                } else {
+                    emit(OpCode::OpSetIndex2D, 0, 0, 0, 0, a.line);
+                }
             }
             break;
         }
@@ -956,15 +973,27 @@ void BytecodeCompiler::compileExpr(const Expr& e) {
             if (arrName.empty() && a.target && a.target->kind == Expr::Kind::Var) {
                 arrName = static_cast<const VarExpr&>(*a.target).name;
             }
-            for (auto& idx : a.indices) {
-                compileExpr(*idx);
-            }
-            int enc = getVarSlot(arrName);
-            int nameConst = addConstant(Value::makeString(arrName));
-            if (a.indices.size() == 1) {
-                emit(OpCode::OpGetArray1D, enc, nameConst, 0, 0, a.line);
-            } else {
-                emit(OpCode::OpGetArray2D, enc, nameConst, 0, 0, a.line);
+            if (!arrName.empty()) {
+                for (auto& idx : a.indices) {
+                    compileExpr(*idx);
+                }
+                int enc = getVarSlot(arrName);
+                int nameConst = addConstant(Value::makeString(arrName));
+                if (a.indices.size() == 1) {
+                    emit(OpCode::OpGetArray1D, enc, nameConst, 0, 0, a.line);
+                } else {
+                    emit(OpCode::OpGetArray2D, enc, nameConst, 0, 0, a.line);
+                }
+            } else if (a.target) {
+                compileExpr(*a.target);
+                for (auto& idx : a.indices) {
+                    compileExpr(*idx);
+                }
+                if (a.indices.size() == 1) {
+                    emit(OpCode::OpIndex1D, 0, 0, 0, 0, a.line);
+                } else {
+                    emit(OpCode::OpIndex2D, 0, 0, 0, 0, a.line);
+                }
             }
             break;
         }

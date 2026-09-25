@@ -31,7 +31,10 @@ struct TypeInfo {
         if (base != o.base || isArray != o.isArray || dims != o.dims) return false;
         if ((base == BaseType::Record || base == BaseType::Object) && recordName != o.recordName) return false;
         if (!isArray) return true;
-        if (dims == 1) return lower1 == o.lower1 && upper1 == o.upper1;
+        if (dims == 1) {
+            if ((lower1 == 0 && upper1 == 0) || (o.lower1 == 0 && o.upper1 == 0)) return true;
+            return lower1 == o.lower1 && upper1 == o.upper1;
+        }
         return lower1 == o.lower1 && upper1 == o.upper1 && lower2 == o.lower2 && upper2 == o.upper2;
     }
     bool operator!=(const TypeInfo& o) const { return !(*this == o); }
@@ -57,6 +60,7 @@ inline std::string typeString(const TypeInfo& t) {
     else baseStr = baseTypeName(t.base);
 
     if (!t.isArray) return baseStr;
+    if (t.dims == 1 && t.lower1 == 0 && t.upper1 == 0) return "ARRAY OF " + baseStr;
     std::string s = "ARRAY[";
     s += std::to_string(t.lower1) + ":" + std::to_string(t.upper1);
     if (t.dims == 2) s += ", " + std::to_string(t.lower2) + ":" + std::to_string(t.upper2);

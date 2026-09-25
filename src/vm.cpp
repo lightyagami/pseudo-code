@@ -402,6 +402,70 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                 break;
             }
 
+            case OpCode::OpIndex1D: {
+                int64_t idx = pop().asInt();
+                Value target = pop();
+                auto& arr = target.arrVal;
+                if (!arr || idx < arr->lower1 || idx > arr->upper1) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf), "Array index out of bounds: index %lld not in [%lld:%lld]",
+                             (long long)idx, arr ? (long long)arr->lower1 : 0LL, arr ? (long long)arr->upper1 : 0LL);
+                    runtimeErr(buf, inst.line);
+                    return 1;
+                }
+                push(arr->data[arr->offset1D(idx)]);
+                break;
+            }
+
+            case OpCode::OpSetIndex1D: {
+                int64_t idx = pop().asInt();
+                Value val = pop();
+                Value target = pop();
+                auto& arr = target.arrVal;
+                if (!arr || idx < arr->lower1 || idx > arr->upper1) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf), "Array index out of bounds: index %lld not in [%lld:%lld]",
+                             (long long)idx, arr ? (long long)arr->lower1 : 0LL, arr ? (long long)arr->upper1 : 0LL);
+                    runtimeErr(buf, inst.line);
+                    return 1;
+                }
+                if (arr->elemType == BaseType::Real && val.isInt()) {
+                    val = Value::makeReal(val.asReal());
+                }
+                arr->data[arr->offset1D(idx)] = copyValue(val);
+                break;
+            }
+
+            case OpCode::OpIndex2D: {
+                int64_t idx2 = pop().asInt();
+                int64_t idx1 = pop().asInt();
+                Value target = pop();
+                auto& arr = target.arrVal;
+                if (!arr || idx1 < arr->lower1 || idx1 > arr->upper1 || idx2 < arr->lower2 || idx2 > arr->upper2) {
+                    runtimeErr("Array index out of bounds", inst.line);
+                    return 1;
+                }
+                push(arr->data[arr->offset2D(idx1, idx2)]);
+                break;
+            }
+
+            case OpCode::OpSetIndex2D: {
+                int64_t idx2 = pop().asInt();
+                int64_t idx1 = pop().asInt();
+                Value val = pop();
+                Value target = pop();
+                auto& arr = target.arrVal;
+                if (!arr || idx1 < arr->lower1 || idx1 > arr->upper1 || idx2 < arr->lower2 || idx2 > arr->upper2) {
+                    runtimeErr("Array index out of bounds", inst.line);
+                    return 1;
+                }
+                if (arr->elemType == BaseType::Real && val.isInt()) {
+                    val = Value::makeReal(val.asReal());
+                }
+                arr->data[arr->offset2D(idx1, idx2)] = copyValue(val);
+                break;
+            }
+
             case OpCode::OpGetField: {
                 Value target = pop();
                 const std::string& field = chunk.constants[inst.a].asString();
