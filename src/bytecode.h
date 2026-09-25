@@ -68,18 +68,6 @@ struct RecordData {
     std::unordered_map<std::string, Value> fields;
 };
 
-inline Value copyValue(const Value& v) {
-    if (v.isRecord() && v.recVal) {
-        auto newRec = std::make_shared<RecordData>();
-        newRec->typeName = v.recVal->typeName;
-        for (const auto& kv : v.recVal->fields) {
-            newRec->fields[kv.first] = copyValue(kv.second);
-        }
-        return Value::makeRecord(newRec);
-    }
-    return v;
-}
-
 struct ArrayData {
     int dims = 1;
     int64_t lower1 = 0, upper1 = 0;
@@ -95,6 +83,25 @@ struct ArrayData {
         return static_cast<size_t>((i1 - lower1) * span2 + (i2 - lower2));
     }
 };
+
+inline Value copyValue(const Value& v) {
+    if (v.isRecord() && v.recVal) {
+        auto newRec = std::make_shared<RecordData>();
+        newRec->typeName = v.recVal->typeName;
+        for (const auto& kv : v.recVal->fields) {
+            newRec->fields[kv.first] = copyValue(kv.second);
+        }
+        return Value::makeRecord(newRec);
+    }
+    if (v.isArray() && v.arrVal) {
+        auto newArr = std::make_shared<ArrayData>(*v.arrVal);
+        for (size_t i = 0; i < newArr->data.size(); ++i) {
+            newArr->data[i] = copyValue(newArr->data[i]);
+        }
+        return Value::makeArray(newArr);
+    }
+    return v;
+}
 
 struct RefTarget {
     enum class Kind { Global, StackSlot, Array1D, Array2D, RecordField, ObjectField };

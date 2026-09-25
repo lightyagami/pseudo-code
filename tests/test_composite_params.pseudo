@@ -1,0 +1,62 @@
+TYPE Pair
+    DECLARE a : INTEGER
+    DECLARE b : INTEGER
+ENDTYPE
+
+// 1. Array BYVAL (default in Cambridge)
+PROCEDURE MutateArrayByVal(arr : ARRAY[1:3] OF INTEGER)
+    arr[1] <- 999
+ENDPROCEDURE
+
+// 2. Array BYREF
+PROCEDURE MutateArrayByRef(BYREF arr : ARRAY[1:3] OF INTEGER)
+    arr[1] <- 888
+ENDPROCEDURE
+
+// 3. Record BYVAL
+PROCEDURE MutateRecordByVal(p : Pair)
+    p.a <- 999
+ENDPROCEDURE
+
+// 4. Record BYREF
+PROCEDURE MutateRecordByRef(BYREF p : Pair)
+    p.a <- 777
+ENDPROCEDURE
+
+// 5. Local variable shadows global
+DECLARE x : INTEGER
+x <- 100
+
+PROCEDURE TestShadowing()
+    DECLARE x : INTEGER
+    x <- 42
+    OUTPUT "Inside TestShadowing, local x = ", x
+ENDPROCEDURE
+
+// Main
+DECLARE nums : ARRAY[1:3] OF INTEGER
+nums[1] <- 10
+nums[2] <- 20
+nums[3] <- 30
+
+OUTPUT "Initial nums[1]: ", nums[1]
+CALL MutateArrayByVal(nums)
+OUTPUT "After MutateArrayByVal, nums[1]: ", nums[1]
+
+CALL MutateArrayByRef(nums)
+OUTPUT "After MutateArrayByRef, nums[1]: ", nums[1]
+
+DECLARE pt : Pair
+pt.a <- 1
+pt.b <- 2
+
+OUTPUT "Initial pt.a: ", pt.a
+CALL MutateRecordByVal(pt)
+OUTPUT "After MutateRecordByVal, pt.a: ", pt.a
+
+CALL MutateRecordByRef(pt)
+OUTPUT "After MutateRecordByRef, pt.a: ", pt.a
+
+OUTPUT "Global x before shadow test: ", x
+CALL TestShadowing()
+OUTPUT "Global x after shadow test: ", x

@@ -50,6 +50,7 @@ void PyCodeGen::emitImports() {
     line("import sys");
     line("import math");
     line("import random");
+    line("import copy");
     line("");
     line("# --- Pseudoc Runtime Helpers ---");
     line("_pc_files = {}");
@@ -140,6 +141,11 @@ void PyCodeGen::emitClassDefinitions(const Block& program) {
         }
 
         if (ctor) {
+            for (const auto& p : ctor->params) {
+                if (!p.isByRef && (p.type.isArray || p.type.base == BaseType::Record)) {
+                    line(p.name + " = copy.deepcopy(" + p.name + ")");
+                }
+            }
             for (const auto& stmt : ctor->body) emitStmt(*stmt);
         } else if (!cls.superClass.empty()) {
             line("super().__init__()");
@@ -159,6 +165,11 @@ void PyCodeGen::emitClassDefinitions(const Block& program) {
             sig += "):";
             line(sig);
             ++indent_;
+            for (const auto& p : m->params) {
+                if (!p.isByRef && (p.type.isArray || p.type.base == BaseType::Record)) {
+                    line(p.name + " = copy.deepcopy(" + p.name + ")");
+                }
+            }
             if (m->body.empty()) {
                 line("pass");
             } else {
@@ -186,6 +197,11 @@ void PyCodeGen::emitFunctions(const Block& program) {
             sig += "):";
             line(sig);
             ++indent_;
+            for (const auto& param : p.params) {
+                if (!param.isByRef && (param.type.isArray || param.type.base == BaseType::Record)) {
+                    line(param.name + " = copy.deepcopy(" + param.name + ")");
+                }
+            }
             if (p.body.empty()) {
                 line("pass");
             } else {
@@ -203,6 +219,11 @@ void PyCodeGen::emitFunctions(const Block& program) {
             sig += "):";
             line(sig);
             ++indent_;
+            for (const auto& param : f.params) {
+                if (!param.isByRef && (param.type.isArray || param.type.base == BaseType::Record)) {
+                    line(param.name + " = copy.deepcopy(" + param.name + ")");
+                }
+            }
             if (f.body.empty()) {
                 line("pass");
             } else {

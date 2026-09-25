@@ -428,7 +428,15 @@ void Sema::checkStmt(Stmt& s) {
 
         case Stmt::Kind::Declare: {
             auto& d = static_cast<DeclareStmt&>(s);
-            if (Symbol* prev = lookup(d.name)) {
+            Symbol* prev = nullptr;
+            if (insideFunction_ || insideProcedure_) {
+                auto it = localSymbols_.find(d.name);
+                if (it != localSymbols_.end()) prev = &it->second;
+            } else {
+                auto it = symbols_.find(d.name);
+                if (it != symbols_.end()) prev = &it->second;
+            }
+            if (prev) {
                 err(d.line, d.col, "'" + d.name + "' is already declared (line " +
                     std::to_string(prev->line) + ")");
             } else {
@@ -462,7 +470,15 @@ void Sema::checkStmt(Stmt& s) {
 
         case Stmt::Kind::Constant: {
             auto& c = static_cast<ConstantStmt&>(s);
-            if (Symbol* prev = lookup(c.name)) {
+            Symbol* prev = nullptr;
+            if (insideFunction_ || insideProcedure_) {
+                auto it = localSymbols_.find(c.name);
+                if (it != localSymbols_.end()) prev = &it->second;
+            } else {
+                auto it = symbols_.find(c.name);
+                if (it != symbols_.end()) prev = &it->second;
+            }
+            if (prev) {
                 err(c.line, c.col, "'" + c.name + "' is already declared (line " +
                     std::to_string(prev->line) + ")");
             } else {

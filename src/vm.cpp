@@ -510,6 +510,11 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                 push(targetObj);
                 for (auto& a : savedArgs) push(std::move(a));
                 size_t stackBase = stack_.size() - static_cast<size_t>(mfi.numParams);
+                for (size_t i = 1; i < static_cast<size_t>(mfi.numParams); ++i) {
+                    if (!stack_[stackBase + i].isRef()) {
+                        stack_[stackBase + i] = copyValue(stack_[stackBase + i]);
+                    }
+                }
                 for (size_t i = mfi.numParams; i < mfi.localVars.size(); ++i) {
                     push(defaultValue(mfi.localVars[i].second));
                 }
@@ -563,6 +568,11 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                 push(thisObj);
                 for (auto& a : savedArgs) push(std::move(a));
                 size_t stackBase = stack_.size() - static_cast<size_t>(sfi.numParams);
+                for (size_t i = 1; i < static_cast<size_t>(sfi.numParams); ++i) {
+                    if (!stack_[stackBase + i].isRef()) {
+                        stack_[stackBase + i] = copyValue(stack_[stackBase + i]);
+                    }
+                }
                 for (size_t i = sfi.numParams; i < sfi.localVars.size(); ++i) {
                     push(defaultValue(sfi.localVars[i].second));
                 }
@@ -586,6 +596,11 @@ int VM::run(const Chunk& chunk, bool isRepl) {
                 }
                 const FunctionInfo& fi = fit->second;
                 size_t stackBase = stack_.size() - inst.b;
+                for (size_t i = 0; i < static_cast<size_t>(inst.b); ++i) {
+                    if (!stack_[stackBase + i].isRef()) {
+                        stack_[stackBase + i] = copyValue(stack_[stackBase + i]);
+                    }
+                }
                 for (size_t i = inst.b; i < fi.localVars.size(); ++i) {
                     push(defaultValue(fi.localVars[i].second));
                 }

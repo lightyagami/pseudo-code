@@ -39,6 +39,29 @@ std::string CodeGen::cName(const std::string& name) {
     return "pc_" + name;
 }
 
+std::string CodeGen::cParamDecl(const ParamDef& p) {
+    if (p.type.isArray) {
+        if (p.type.dims == 1) {
+            if (p.isByRef) {
+                return cBaseType(p.type) + "* " + cName(p.name);
+            } else {
+                return "const " + cBaseType(p.type) + "* " + cName(p.name) + "_in";
+            }
+        } else {
+            long long n2 = (p.type.upper2 - p.type.lower2 + 1);
+            if (p.isByRef) {
+                return cBaseType(p.type) + " (*" + cName(p.name) + ")[" + std::to_string(n2) + "]";
+            } else {
+                return "const " + cBaseType(p.type) + " (*" + cName(p.name) + "_in)[" + std::to_string(n2) + "]";
+            }
+        }
+    }
+    std::string s = cBaseType(p.type);
+    if (p.isByRef) s += "*";
+    s += " " + cName(p.name);
+    return s;
+}
+
 std::string CodeGen::escapeCStr(const std::string& s) {
     std::string out = "\"";
     for (char c : s) {
@@ -367,9 +390,7 @@ void CodeGen::emitFunctionPrototypes() {
         } else {
             for (size_t i = 0; i < fn.params.size(); ++i) {
                 if (i > 0) out_ << ", ";
-                out_ << cBaseType(fn.params[i].type);
-                if (fn.params[i].isByRef) out_ << "*";
-                out_ << " " << cName(fn.params[i].name);
+                out_ << cParamDecl(fn.params[i]);
             }
         }
         out_ << ");\n";
@@ -382,44 +403,72 @@ void CodeGen::emitFunctionDefinitions(const Block& program) {
     for (const auto& s : program) {
         if (s->kind == Stmt::Kind::ProcedureDecl) {
             auto& p = static_cast<const ProcedureDeclStmt&>(*s);
+            auto savedVarMap = varMap_;
             currentByRefParams_.clear();
             for (const auto& param : p.params) {
-                if (param.isByRef) currentByRefParams_.insert(param.name);
+                varMap_[param.name] = param.type;
+                if (param.isByRef && !param.type.isArray) currentByRefParams_.insert(param.name);
             }
             out_ << "void " << cName(p.name) << "(";
             if (p.params.empty()) out_ << "void";
             else {
                 for (size_t i = 0; i < p.params.size(); ++i) {
                     if (i > 0) out_ << ", ";
-                    out_ << cBaseType(p.params[i].type);
-                    if (p.params[i].isByRef) out_ << "*";
-                    out_ << " " << cName(p.params[i].name);
+                    out_ << cParamDecl(p.params[i]);
                 }
             }
             out_ << ") {\n";
-            emitIndented(p.body);
+            indent_ = 1;
+            for (const auto& param : p.params) {
+                if (param.type.isArray && !param.isByRef) {
+                    long long n1 = (param.type.upper1 - param.type.lower1 + 1);
+                    if (param.type.dims == 1) {
+                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                    } else {
+                        long long n2 = (param.type.upper2 - param.type.lower2 + 1);
+                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                    }
+                    line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
+                }
+            }
+            for (const auto& stmt : p.body) emitStmt(*stmt);
             out_ << "}\n\n";
             currentByRefParams_.clear();
+            varMap_ = std::move(savedVarMap);
         } else if (s->kind == Stmt::Kind::FunctionDecl) {
             auto& f = static_cast<const FunctionDeclStmt&>(*s);
+            auto savedVarMap = varMap_;
             currentByRefParams_.clear();
             for (const auto& param : f.params) {
-                if (param.isByRef) currentByRefParams_.insert(param.name);
+                varMap_[param.name] = param.type;
+                if (param.isByRef && !param.type.isArray) currentByRefParams_.insert(param.name);
             }
             out_ << cBaseType(f.returnType) << " " << cName(f.name) << "(";
             if (f.params.empty()) out_ << "void";
             else {
                 for (size_t i = 0; i < f.params.size(); ++i) {
                     if (i > 0) out_ << ", ";
-                    out_ << cBaseType(f.params[i].type);
-                    if (f.params[i].isByRef) out_ << "*";
-                    out_ << " " << cName(f.params[i].name);
+                    out_ << cParamDecl(f.params[i]);
                 }
             }
             out_ << ") {\n";
-            emitIndented(f.body);
+            indent_ = 1;
+            for (const auto& param : f.params) {
+                if (param.type.isArray && !param.isByRef) {
+                    long long n1 = (param.type.upper1 - param.type.lower1 + 1);
+                    if (param.type.dims == 1) {
+                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                    } else {
+                        long long n2 = (param.type.upper2 - param.type.lower2 + 1);
+                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                    }
+                    line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
+                }
+            }
+            for (const auto& stmt : f.body) emitStmt(*stmt);
             out_ << "}\n\n";
             currentByRefParams_.clear();
+            varMap_ = std::move(savedVarMap);
         }
     }
     insideFunction_ = false;
@@ -441,9 +490,11 @@ void CodeGen::emitClassMethods(const Block& program) {
 
         for (const auto& methodPtr : cls.methods) {
             const ClassMethod& method = *methodPtr;
+            auto savedVarMap = varMap_;
             currentByRefParams_.clear();
             for (const auto& param : method.params) {
-                if (param.isByRef) currentByRefParams_.insert(param.name);
+                varMap_[param.name] = param.type;
+                if (param.isByRef && !param.type.isArray) currentByRefParams_.insert(param.name);
             }
             // Return type
             std::string retType = method.isFunction ? cBaseType(method.returnType) : "void";
@@ -451,14 +502,26 @@ void CodeGen::emitClassMethods(const Block& program) {
             std::string funcName = "pc_" + cls.name + "_" + method.name;
             out_ << retType << " " << funcName << "(" << structType << "* pc_THIS";
             for (const auto& param : method.params) {
-                out_ << ", " << cBaseType(param.type);
-                if (param.isByRef) out_ << "*";
-                out_ << " " << cName(param.name);
+                out_ << ", " << cParamDecl(param);
             }
             out_ << ") {\n";
-            emitIndented(method.body);
+            indent_ = 1;
+            for (const auto& param : method.params) {
+                if (param.type.isArray && !param.isByRef) {
+                    long long n1 = (param.type.upper1 - param.type.lower1 + 1);
+                    if (param.type.dims == 1) {
+                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "];");
+                    } else {
+                        long long n2 = (param.type.upper2 - param.type.lower2 + 1);
+                        line(cBaseType(param.type) + " " + cName(param.name) + "[" + std::to_string(n1) + "][" + std::to_string(n2) + "];");
+                    }
+                    line("memcpy(" + cName(param.name) + ", " + cName(param.name) + "_in, sizeof(" + cName(param.name) + "));");
+                }
+            }
+            for (const auto& stmt : method.body) emitStmt(*stmt);
             out_ << "}\n\n";
             currentByRefParams_.clear();
+            varMap_ = std::move(savedVarMap);
         }
 
         // Emit factory function: StructType pc_new_ClassName(ctor_params...)
@@ -467,7 +530,7 @@ void CodeGen::emitClassMethods(const Block& program) {
             if (ctorMethod && !ctorMethod->params.empty()) {
                 for (size_t i = 0; i < ctorMethod->params.size(); ++i) {
                     if (i > 0) out_ << ", ";
-                    out_ << cBaseType(ctorMethod->params[i].type) << " " << cName(ctorMethod->params[i].name);
+                    out_ << cParamDecl(ctorMethod->params[i]);
                 }
             } else {
                 out_ << "void";
@@ -610,6 +673,7 @@ void CodeGen::emitStmt(const Stmt& s) {
 
         case Stmt::Kind::Declare: {
             auto& d = static_cast<const DeclareStmt&>(s);
+            varMap_[d.name] = d.declaredType;
             // Local declarations inside procedures/functions
             if (insideFunction_) {
                 if (d.declaredType.isArray) {
@@ -629,6 +693,7 @@ void CodeGen::emitStmt(const Stmt& s) {
 
         case Stmt::Kind::Constant: {
             auto& c = static_cast<const ConstantStmt&>(s);
+            varMap_[c.name] = (c.explicitType.base != BaseType::Error) ? c.explicitType : c.value->type;
             if (insideFunction_) {
                 line(cBaseType(c.value->type) + " " + cName(c.name) + " = " + expr(*c.value) + ";");
             } else {
@@ -731,7 +796,21 @@ void CodeGen::emitStmt(const Stmt& s) {
                     targetPtr = "&(" + objExpr + ")";
                 }
                 std::string callStr = "pc_" + defClass + "_" + c.name + "((struct pc_class_" + defClass + "*)" + targetPtr;
-                for (auto& arg : c.args) callStr += ", " + expr(*arg);
+                auto cit = classTypes_.find(defClass);
+                const Sema::FunctionSig* msig = nullptr;
+                if (cit != classTypes_.end()) {
+                    auto mit = cit->second.methods.find(c.name);
+                    if (mit != cit->second.methods.end()) msig = &mit->second;
+                }
+                for (size_t i = 0; i < c.args.size(); ++i) {
+                    callStr += ", ";
+                    if (msig && i < msig->params.size() && msig->params[i].isByRef) {
+                        if (msig->params[i].type.isArray) callStr += expr(*c.args[i]);
+                        else callStr += "&" + lvalueExpr(*c.args[i]);
+                    } else {
+                        callStr += expr(*c.args[i]);
+                    }
+                }
                 callStr += ");";
                 line(callStr);
             } else {
@@ -740,7 +819,11 @@ void CodeGen::emitStmt(const Stmt& s) {
                 for (size_t i = 0; i < c.args.size(); ++i) {
                     if (i > 0) callStr += ", ";
                     if (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef) {
-                        callStr += "&" + lvalueExpr(*c.args[i]);
+                        if (it->second.params[i].type.isArray) {
+                            callStr += expr(*c.args[i]);
+                        } else {
+                            callStr += "&" + lvalueExpr(*c.args[i]);
+                        }
                     } else {
                         callStr += expr(*c.args[i]);
                     }
@@ -1077,9 +1160,22 @@ std::string CodeGen::expr(const Expr& e) {
                 }
                 cur = it->second.superClass;
             }
-            if (defClass.empty()) defClass = cls;
             std::string s = "pc_" + defClass + "_" + m.method + "((struct pc_class_" + defClass + "*)" + targetExpr;
-            for (auto& arg : m.args) s += ", " + expr(*arg);
+            auto cit = classTypes_.find(defClass);
+            const Sema::FunctionSig* msig = nullptr;
+            if (cit != classTypes_.end()) {
+                auto mit = cit->second.methods.find(m.method);
+                if (mit != cit->second.methods.end()) msig = &mit->second;
+            }
+            for (size_t i = 0; i < m.args.size(); ++i) {
+                s += ", ";
+                if (msig && i < msig->params.size() && msig->params[i].isByRef) {
+                    if (msig->params[i].type.isArray) s += expr(*m.args[i]);
+                    else s += "&" + lvalueExpr(*m.args[i]);
+                } else {
+                    s += expr(*m.args[i]);
+                }
+            }
             s += ")";
             return s;
         }
@@ -1093,7 +1189,11 @@ std::string CodeGen::userCall(const UserCallExpr& c) {
     for (size_t i = 0; i < c.args.size(); ++i) {
         if (i > 0) s += ", ";
         if (it != functions_.end() && i < it->second.params.size() && it->second.params[i].isByRef) {
-            s += "&" + lvalueExpr(*c.args[i]);
+            if (it->second.params[i].type.isArray) {
+                s += expr(*c.args[i]);
+            } else {
+                s += "&" + lvalueExpr(*c.args[i]);
+            }
         } else {
             s += expr(*c.args[i]);
         }

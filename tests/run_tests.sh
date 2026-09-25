@@ -96,6 +96,7 @@ run_test "tests/test_constants.pseudo" ""
 run_test "tests/test_builtins.pseudo" ""
 run_test "tests/test_oop.pseudo" ""
 run_test "tests/test_banking_oop.pseudo" ""
+run_test "tests/test_composite_params.pseudo" ""
 
 if command -v python3 >/dev/null 2>&1; then
     echo "=== Running Python 3 Transpiler Tests (VM == Python) ==="
@@ -108,6 +109,7 @@ if command -v python3 >/dev/null 2>&1; then
     run_py_test "tests/test_builtins.pseudo" ""
     run_py_test "tests/test_oop.pseudo" ""
     run_py_test "tests/test_banking_oop.pseudo" ""
+    run_py_test "tests/test_composite_params.pseudo" ""
 fi
 
 run_c_to_pseudo_test() {
@@ -144,7 +146,7 @@ echo "=== Running Reverse C-to-Pseudocode Tests ==="
 run_c_to_pseudo_test "tests/test_c_to_pseudo.c"
 
 echo "=== Running --check / Syntax & Sema Only Tests ==="
-for check_f in "tour.pseudo" "tests/test_banking_oop.pseudo" "tests/test_c_to_pseudo.c"; do
+for check_f in "tour.pseudo" "tests/test_banking_oop.pseudo" "tests/test_composite_params.pseudo" "tests/test_c_to_pseudo.c"; do
     if $PSEUDOC --check "$check_f"; then
         echo "  [PASS] $check_f (--check passed)"
         PASSED=$((PASSED + 1))
@@ -153,6 +155,26 @@ for check_f in "tour.pseudo" "tests/test_banking_oop.pseudo" "tests/test_c_to_ps
         FAILED=$((FAILED + 1))
     fi
 done
+
+echo "=== Running Negative --check Tests (Expected Failures) ==="
+run_negative_check() {
+    local desc="$1"
+    local code="$2"
+    local bad_file="$TMP_DIR/bad_$$.pseudo"
+    echo -e "$code" > "$bad_file"
+    if $PSEUDOC --check "$bad_file" >/dev/null 2>&1; then
+        echo "  [FAIL] $desc: expected --check failure, but it succeeded!"
+        FAILED=$((FAILED + 1))
+    else
+        echo "  [PASS] $desc (properly rejected)"
+        PASSED=$((PASSED + 1))
+    fi
+}
+
+run_negative_check "Type mismatch assignment" "DECLARE x : INTEGER\nx <- \"hello\""
+run_negative_check "Undeclared variable" "undeclared_var <- 42"
+run_negative_check "Arity mismatch" "FUNCTION f(a : INTEGER) RETURNS INTEGER\nRETURN a\nENDFUNCTION\nDECLARE res : INTEGER\nres <- f(1, 2)"
+run_negative_check "Duplicate declaration in same scope" "DECLARE x : INTEGER\nDECLARE x : INTEGER"
 
 echo "------------------------------------------------"
 echo "Results: $PASSED passed, $FAILED failed"

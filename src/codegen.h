@@ -38,6 +38,7 @@ private:
     std::string cBaseType(const TypeInfo& t);
     std::string zeroValue(const TypeInfo& t);
     static std::string cName(const std::string& name);
+    std::string cParamDecl(const ParamDef& p);
     static std::string cTypeName(const std::string& name);
     static std::string cClassTypeName(const std::string& name);
     static std::string escapeCStr(const std::string& s);
