@@ -3,89 +3,136 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cambridge 9618 Pseudocode Playground</title>
+  <title>Pseudocode Compiler - Cambridge 9618</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!-- Top Navigation Bar -->
   <header class="navbar">
-    <div class="brand">
-      <span class="logo-icon">⚡</span>
-      <div class="brand-text">
-        <h1>Cambridge 9618 Pseudocode</h1>
-        <span class="badge">WebAssembly Engine</span>
+    <div class="nav-left">
+      <div class="brand">
+        <svg class="brand-glyph" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+        <span class="brand-name">Pseudocode</span>
+        <span class="brand-sub">COMPILER</span>
+      </div>
+      <div class="file-tab">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        <span>main.pseudo</span>
       </div>
     </div>
-    <div class="actions">
-      <div class="preset-selector">
+
+    <div class="nav-center">
+      <div class="preset-dropdown">
         <label for="preset-select">Preset:</label>
         <select id="preset-select">
-          <option value="paper4_array">Paper 4: Array-Returning Functions</option>
-          <option value="paper4_random_file">Paper 4: Direct Access Random File I/O</option>
+          <option value="welcome">Welcome & Basic I/O</option>
+          <option value="paper4_array">Array-Returning Functions (Paper 4)</option>
+          <option value="paper4_random_file">Direct Access Random Files (Paper 4)</option>
           <option value="oop_banking">OOP: Banking System (Paper 4)</option>
           <option value="composite_params">Records & Pass-by-Reference</option>
-          <option value="bubble_sort">Algorithms: Bubble Sort</option>
-          <option value="basics_tour">Syllabus Tour: Core Features</option>
+          <option value="bubble_sort">Algorithm: Bubble Sort</option>
+          <option value="basics_tour">Full Language Tour</option>
         </select>
       </div>
-      <button id="btn-check" class="btn btn-secondary" title="Analyze syntax and type semantics">
-        <span class="icon">🔍</span> Check
+    </div>
+
+    <div class="nav-right">
+      <button id="btn-check" class="nav-btn btn-outline" title="Perform syntax & semantic type checking">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span>Check</span>
       </button>
-      <button id="btn-run" class="btn btn-primary" title="Execute script on the in-browser WebAssembly VM">
-        <span class="icon">▶</span> Run (VM)
+
+      <button id="btn-run" class="nav-btn btn-run" title="Execute script on VM (Ctrl+Enter)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Run</span>
+        <span class="btn-kbd">Ctrl+Enter</span>
       </button>
     </div>
   </header>
 
-  <main class="playground-layout">
-    <section class="editor-pane">
-      <div class="pane-header">
-        <span class="pane-title">Pseudocode Source (Cambridge 9618)</span>
-        <div class="editor-tools">
-          <button id="btn-clear" class="btn-tool" title="Clear editor">Clear</button>
-          <button id="btn-copy-code" class="btn-tool" title="Copy code">Copy</button>
-        </div>
+  <!-- Sub-header Info Bar -->
+  <div class="sub-bar">
+    <div class="sub-left">
+      <span class="hint-key">Ctrl+Enter</span> <span class="hint-text">Run</span>
+      <span class="sep">&bull;</span>
+      <span class="hint-key">Tab</span> <span class="hint-text">Indent (4 spaces)</span>
+    </div>
+    <div class="sub-right">
+      <button id="btn-clear" class="sub-btn">Clear</button>
+      <button id="btn-copy-code" class="sub-btn">Copy Code</button>
+    </div>
+  </div>
+
+  <!-- Workspace: Left Editor | Right Terminal -->
+  <main class="workspace">
+    <!-- Editor Pane -->
+    <section class="pane editor-pane">
+      <div class="editor-container">
+        <div id="line-numbers" class="line-numbers" aria-hidden="true"></div>
+        <textarea id="code-editor" spellcheck="false" placeholder="// Write Cambridge 9618 Pseudocode here..."></textarea>
       </div>
-      <div class="editor-wrapper">
-        <textarea id="code-editor" spellcheck="false" placeholder="Write Cambridge 9618 Pseudocode here..."></textarea>
-      </div>
-      <div class="stdin-pane">
-        <div class="stdin-header">
-          <span>Standard Input (STDIN)</span>
-          <span class="stdin-hint">Input lines for INPUT statements</span>
+      <div class="stdin-section">
+        <div class="stdin-bar">
+          <span class="stdin-title">STDIN (Input buffer)</span>
+          <span class="stdin-desc">Lines consumed by INPUT statements</span>
         </div>
-        <textarea id="stdin-input" rows="2" placeholder="e.g. 10&#10;20"></textarea>
+        <textarea id="stdin-input" rows="2" placeholder="Input values..."></textarea>
       </div>
     </section>
 
-    <section class="output-pane">
-      <div class="pane-header">
+    <!-- Output Pane -->
+    <section class="pane output-pane">
+      <div class="tab-header">
         <div class="tabs">
-          <button class="tab-btn active" data-tab="vm">VM Console</button>
-          <button class="tab-btn" data-tab="c">Generated C99</button>
-          <button class="tab-btn" data-tab="py">Generated Python 3</button>
+          <button class="tab-btn active" data-tab="vm">
+            <span class="tab-prefix">&gt;_</span> Terminal
+          </button>
+          <button class="tab-btn" data-tab="py">Python</button>
+          <button class="tab-btn" data-tab="c">C</button>
           <button class="tab-btn" data-tab="bc">Bytecode</button>
-          <button class="tab-btn" data-tab="check">Type Check</button>
+          <button class="tab-btn" data-tab="check">Analysis</button>
         </div>
-        <div class="output-actions">
-          <span id="status-pill" class="status-pill ready">Ready</span>
-          <button id="btn-copy-output" class="btn-tool" title="Copy output">Copy</button>
+        <div class="tab-tools">
+          <button id="btn-copy-output" class="sub-btn">Copy</button>
         </div>
       </div>
-      <div class="output-body">
-        <pre id="output-content" class="console-output">Loading WebAssembly pseudoc engine...</pre>
+      <div class="terminal-body" id="terminal-body">
+        <pre id="output-content" class="console-output"></pre>
+        <div id="empty-state" class="empty-state">
+          <div class="empty-glyph">{&nbsp;}</div>
+          <div class="empty-title">Pseudocode Compiler</div>
+          <div class="empty-sub">Write code on the left, run with <span class="key-tag">Ctrl+Enter</span></div>
+        </div>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="footer-left">
-      <span>Compliant with Cambridge International AS &amp; A Level Computer Science (9618) Syllabus</span>
+  <!-- Bottom Status Bar -->
+  <footer class="statusbar">
+    <div class="status-left">
+      <span id="status-indicator" class="status-dot ready"></span>
+      <span id="status-text">Ready</span>
     </div>
-    <div class="footer-right">
-      <span>Backends: WebAssembly VM &bull; ANSI C99 &bull; Python 3</span>
+    <div class="status-right">
+      <span id="line-count-display">0 lines</span>
+      <span class="status-sep">|</span>
+      <span>Cambridge 9618</span>
+      <span class="status-sep">|</span>
+      <span>WebAssembly VM</span>
     </div>
   </footer>
 

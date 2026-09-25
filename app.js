@@ -1,7 +1,27 @@
-// Cambridge 9618 Pseudocode Playground App
+// Pseudocode Compiler - Cambridge 9618 Web Playground
 (function() {
   const PRESETS = {
-    paper4_array: `// Cambridge 9618 Paper 4: Array-Returning Functions & Whole-Array Assignments
+    welcome: `// Welcome! Press Run (or Ctrl+Enter) to execute this code.
+
+DECLARE name : STRING
+DECLARE age  : INTEGER
+
+OUTPUT "What is your name? "
+INPUT name
+
+OUTPUT "How old are you? "
+INPUT age
+
+OUTPUT "Hello, " & name & "!"
+
+IF age < 18 THEN
+    OUTPUT "You are a student."
+ELSE
+    OUTPUT "You are an adult."
+ENDIF
+`,
+
+    paper4_array: `// Cambridge 9618 Paper 4: Array-Returning Functions
 FUNCTION GenerateSquares(limit : INTEGER) RETURNS ARRAY[1:5] OF INTEGER
     DECLARE arr : ARRAY[1:5] OF INTEGER
     DECLARE i : INTEGER
@@ -216,14 +236,28 @@ OUTPUT "Liftoff!"
 `
   };
 
+  const DEFAULT_STDIN = {
+    welcome: "Alex\n20",
+    paper4_array: "",
+    paper4_random_file: "",
+    oop_banking: "",
+    composite_params: "",
+    bubble_sort: "",
+    basics_tour: ""
+  };
+
   let wasmModule = null;
   let currentTab = 'vm';
-  const tabCache = { vm: '', c: '', py: '', bc: '', check: '' };
+  const tabCache = { vm: '', py: '', c: '', bc: '', check: '' };
 
   const codeEditor = document.getElementById('code-editor');
+  const lineNumbers = document.getElementById('line-numbers');
   const stdinInput = document.getElementById('stdin-input');
   const outputContent = document.getElementById('output-content');
-  const statusPill = document.getElementById('status-pill');
+  const emptyState = document.getElementById('empty-state');
+  const statusDot = document.getElementById('status-indicator');
+  const statusText = document.getElementById('status-text');
+  const lineCountDisplay = document.getElementById('line-count-display');
   const presetSelect = document.getElementById('preset-select');
   const btnRun = document.getElementById('btn-run');
   const btnCheck = document.getElementById('btn-check');
@@ -232,33 +266,54 @@ OUTPUT "Liftoff!"
   const btnCopyOutput = document.getElementById('btn-copy-output');
   const tabBtns = document.querySelectorAll('.tab-btn');
 
-  function setStatus(text, type) {
-    statusPill.textContent = text;
-    statusPill.className = `status-pill ${type}`;
+  function updateLineNumbers() {
+    const lines = codeEditor.value.split('\n');
+    const count = lines.length;
+    let nums = '';
+    for (let i = 1; i <= count; ++i) {
+      nums += i + '\n';
+    }
+    lineNumbers.textContent = nums;
+    lineCountDisplay.textContent = `${count} ${count === 1 ? 'line' : 'lines'}`;
   }
 
-  // Load preset
-  function loadPreset(key) {
-    if (PRESETS[key]) {
-      codeEditor.value = PRESETS[key];
-      clearOutputs();
-      runCurrentTab();
+  codeEditor.addEventListener('scroll', () => {
+    lineNumbers.scrollTop = codeEditor.scrollTop;
+  });
+
+  codeEditor.addEventListener('input', () => {
+    updateLineNumbers();
+  });
+
+  function setStatus(text, state) {
+    statusText.textContent = text;
+    statusDot.className = `status-dot ${state}`;
+  }
+
+  function displayOutput(text) {
+    if (!text && currentTab === 'vm') {
+      emptyState.style.display = 'flex';
+      outputContent.classList.remove('visible');
+      outputContent.textContent = '';
+    } else {
+      emptyState.style.display = 'none';
+      outputContent.classList.add('visible');
+      outputContent.textContent = text || '(No output)';
     }
   }
 
   function clearOutputs() {
     tabCache.vm = '';
-    tabCache.c = '';
     tabCache.py = '';
+    tabCache.c = '';
     tabCache.bc = '';
     tabCache.check = '';
-    outputContent.textContent = '';
+    displayOutput('');
   }
 
-  // Execute current tab action
   function runCurrentTab() {
     if (!wasmModule) {
-      outputContent.textContent = "WebAssembly engine is still initializing...";
+      displayOutput("WebAssembly engine is initializing...");
       return;
     }
     const source = codeEditor.value;
@@ -270,33 +325,42 @@ OUTPUT "Liftoff!"
       if (currentTab === 'vm') {
         const out = wasmModule.wasm_run_vm(source, input);
         tabCache.vm = out;
-        outputContent.textContent = out || "(Program executed successfully with no console output)";
-      } else if (currentTab === 'c') {
-        const out = wasmModule.wasm_emit_c(source);
-        tabCache.c = out;
-        outputContent.textContent = out;
+        displayOutput(out);
       } else if (currentTab === 'py') {
         const out = wasmModule.wasm_emit_py(source);
         tabCache.py = out;
-        outputContent.textContent = out;
+        displayOutput(out);
+      } else if (currentTab === 'c') {
+        const out = wasmModule.wasm_emit_c(source);
+        tabCache.c = out;
+        displayOutput(out);
       } else if (currentTab === 'bc') {
         const out = wasmModule.wasm_dump_bytecode(source);
         tabCache.bc = out;
-        outputContent.textContent = out;
+        displayOutput(out);
       } else if (currentTab === 'check') {
         const out = wasmModule.wasm_check(source);
         tabCache.check = out;
-        outputContent.textContent = out;
+        displayOutput(out);
       }
       const dt = (performance.now() - t0).toFixed(1);
       setStatus(`Ready (${dt} ms)`, 'ready');
     } catch (err) {
-      outputContent.textContent = "Error: " + err.message;
+      displayOutput("Error: " + err.message);
       setStatus('Error', 'error');
     }
   }
 
-  // Tab switching
+  function loadPreset(key) {
+    if (PRESETS[key]) {
+      codeEditor.value = PRESETS[key];
+      stdinInput.value = DEFAULT_STDIN[key] || "";
+      updateLineNumbers();
+      clearOutputs();
+      runCurrentTab();
+    }
+  }
+
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       tabBtns.forEach(b => b.classList.remove('active'));
@@ -304,7 +368,7 @@ OUTPUT "Liftoff!"
       currentTab = btn.getAttribute('data-tab');
 
       if (tabCache[currentTab]) {
-        outputContent.textContent = tabCache[currentTab];
+        displayOutput(tabCache[currentTab]);
       } else {
         runCurrentTab();
       }
@@ -312,14 +376,12 @@ OUTPUT "Liftoff!"
   });
 
   btnRun.addEventListener('click', () => {
-    // Switch to VM console tab and execute
     currentTab = 'vm';
     tabBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === 'vm'));
     runCurrentTab();
   });
 
   btnCheck.addEventListener('click', () => {
-    // Switch to Type Check tab and execute
     currentTab = 'check';
     tabBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === 'check'));
     runCurrentTab();
@@ -331,6 +393,7 @@ OUTPUT "Liftoff!"
 
   btnClear.addEventListener('click', () => {
     codeEditor.value = '';
+    updateLineNumbers();
     clearOutputs();
     setStatus('Ready', 'ready');
   });
@@ -338,20 +401,20 @@ OUTPUT "Liftoff!"
   btnCopyCode.addEventListener('click', () => {
     navigator.clipboard.writeText(codeEditor.value).then(() => {
       const prev = btnCopyCode.textContent;
-      btnCopyCode.textContent = "Copied!";
-      setTimeout(() => btnCopyCode.textContent = prev, 1500);
+      btnCopyCode.textContent = "Copied";
+      setTimeout(() => btnCopyCode.textContent = prev, 1200);
     });
   });
 
   btnCopyOutput.addEventListener('click', () => {
     navigator.clipboard.writeText(outputContent.textContent).then(() => {
       const prev = btnCopyOutput.textContent;
-      btnCopyOutput.textContent = "Copied!";
-      setTimeout(() => btnCopyOutput.textContent = prev, 1500);
+      btnCopyOutput.textContent = "Copied";
+      setTimeout(() => btnCopyOutput.textContent = prev, 1200);
     });
   });
 
-  // Enable Tab indentation in textarea
+  // Editor shortcuts: Tab and Ctrl+Enter / Cmd+Enter
   codeEditor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -359,10 +422,14 @@ OUTPUT "Liftoff!"
       const end = codeEditor.selectionEnd;
       codeEditor.value = codeEditor.value.substring(0, start) + "    " + codeEditor.value.substring(end);
       codeEditor.selectionStart = codeEditor.selectionEnd = start + 4;
+      updateLineNumbers();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      btnRun.click();
     }
   });
 
-  // Initialize WebAssembly Module
+  // Initialize WebAssembly
   if (typeof createPseudocModule === 'function') {
     createPseudocModule().then(Module => {
       wasmModule = {
@@ -374,13 +441,13 @@ OUTPUT "Liftoff!"
         wasm_c_to_pseudo: Module.cwrap('wasm_c_to_pseudo', 'string', ['string']),
       };
       setStatus('Ready', 'ready');
-      loadPreset(presetSelect.value);
+      loadPreset('welcome');
     }).catch(err => {
-      outputContent.textContent = "Failed to load WebAssembly module: " + err;
+      displayOutput("Failed to load WebAssembly module: " + err);
       setStatus('Error', 'error');
     });
   } else {
-    outputContent.textContent = "WebAssembly module script (pseudoc.js) not found.";
+    displayOutput("WebAssembly script not found.");
     setStatus('Error', 'error');
   }
 })();
